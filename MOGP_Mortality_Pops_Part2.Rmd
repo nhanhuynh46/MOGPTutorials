@@ -1,0 +1,1424 @@
+---
+title: "MOGP for multi-population longevity modeling  \n Part II - Intrinsic Coregionalization Model"
+site: rmarkdown::render_site
+author: 
+  - Nhan Huynh, UCSB
+  - Mike Ludkovski, UCSB
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  html_document:
+    df_print: kable
+    theme: united
+    highlight: zenburn
+    toc: yes
+    toc_depth: 4
+    toc_float: 
+      collapsed: true
+      smooth_scroll: true
+    number_sections: true
+  # pdf_document: 
+  #   df_print: kable
+  #   highlight: zenburn
+  #   extra_dependencies: ["xcolor"]
+---
+<style>
+  .col2 {
+    columns: 2 200px;         /* number of columns and width in pixels*/
+    -webkit-columns: 2 200px; /* chrome, safari */
+    -moz-columns: 2 200px;    /* firefox */
+  }
+  .list-group-item.active, .list-group-item.active:focus, .list-group-item.active:hover {
+    background-color: #8c3c67;
+  }
+</style>
+
+<style type="text/css">
+body{ /* Normal  */
+  font-size: 15px;
+}
+h1.title {
+  font-size: 35px;
+  font-weight: Bold;
+  font-style: Italic;
+  color:  #c64329;
+}
+h1 { /* Header 1 */
+  font-size: 28px;
+  color:  #c64329;
+}
+h2 { /* Header 2 */
+  font-size: 25px;
+  color: #c64329;
+}
+h3 { /* Header 3 */
+  font-size: 20px;
+  color: #c64329;
+}
+h4.author {
+  font-size: 20px;
+  color: #0047d6;
+}
+</style>
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE, setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, comment = NA)
+options("digits"=4)
+```
+
+```{r, echo = FALSE}
+library(kableExtra) 
+library(plotly)
+library(ggplot2)
+library(shiny)
+```
+
+<hr>
+
+In [Part I](MOGP_Mortality_Pops_Part1.html), we have discussed a full-rank kernel for MOGP model. However, estimating the cross-covariance kernel requires $L(L-1)/2$ parameters $\theta_{l_1,l_2}, 1 \leq l_1 \leq l_2 \leq L$ which imposes challenges in both statistical and computational aspects when modelling MOGP with many outputs (e.g. $L \geq 4$). In this section, we will discuss an attractive dimension reduction approach, the intrinsic coregionalization model (ICM), to keep the number of correlation parameters low. 
+
+# Packages and user-defined functions
+
+Loading all packages into the current working directory:
+
+```{r, loadLibrary}
+library(DiceKriging)
+library(rgenoud)
+library(kergp) 
+library(nloptr)
+library(data.table)
+```
+
+  * [`DiceKriging`](https://cran.r-project.org/web/packages/DiceKriging/DiceKriging.pdf): kriging methods for single-output GP (SOGP).
+  * [`rgenoud`](https://cran.r-project.org/web/packages/rgenoud/rgenoud.pdf): solve genetic optimization (for SOGP).
+  * [`kergp`](https://cran.r-project.org/web/packages/kergp/kergp.pdf): kriging methods for user-defined kernel, needed for both Full-rank and ICM Multi-output GP. 
+  * [`nloptr`](https://cran.r-project.org/web/packages/nloptr/nloptr.pdf): solve nonlinear optimization using R interface to NLopt.
+  * [`data.table`](https://cran.r-project.org/web/packages/data.table/data.table.pdf): extension of `data.frame` to enhance data manipulation. 
+
+Loading all user-defined functions:
+
+```{r, loadFunctions}
+source("createMortData.R")
+source("covICM.R")
+source("gp_prediction.R")
+```
+
+  * $\color{blue}{\texttt{createMortData.R}}$: to import datasets and select populations prior to model fitting. We can specify the age groups, calendar years, and whether both Males and Females are modeled together. All the datasets are downloaded from the [Human Mortality Database](https://www.mortality.org/). Currently, we have 16 European countries (seperated by gender) in Death Count and Exposures folders. These countries are: 
+  <div class="col2">
+      * <img src="https://www.countryflags.io/AT/shiny/24.png"> Austria  
+      * <img src="https://www.countryflags.io/BY/shiny/24.png"> Belarus
+      * <img src="https://www.countryflags.io/CZ/shiny/24.png"> Czech
+      * <img src="https://www.countryflags.io/DK/shiny/24.png"> Denmark
+      * <img src="https://www.countryflags.io/EE/shiny/24.png"> Estonia  
+      * <img src="https://www.countryflags.io/FR/shiny/24.png"> France  
+      * <img src="https://www.countryflags.io/DE/shiny/24.png"> Germany  
+      * <img src="https://www.countryflags.io/HU/shiny/24.png"> Hungary  
+      * <img src="https://www.countryflags.io/LV/shiny/24.png"> Latvia 
+      * <img src="https://www.countryflags.io/LT/shiny/24.png"> Lithuania  
+      * <img src="https://www.countryflags.io/NL/shiny/24.png"> Netherlands 
+      * <img src="https://www.countryflags.io/PL/shiny/24.png"> Poland  
+      * <img src="https://www.countryflags.io/ES/shiny/24.png"> Spain 
+      * <img src="https://www.countryflags.io/SE/shiny/24.png"> Sweden  
+      * <img src="https://www.countryflags.io/CH/shiny/24.png"> Switzerland 
+      * <img src="https://www.countryflags.io/GB/shiny/24.png"> UK  
+  </div>  
+  Illustration on the historical evolution of the log- mortality rates for Age 80 from 1984--2016 in 16 European countries, separated by Males (left figure) and Females (right figure). We observe that: Female populations have lower mortality rates than Male groups and within each gender, Western European countries have lower mortality trends than Eastern European countries.  
+   
+<div class="col2">   
+```{r, cache = TRUE, echo = FALSE, amimatePlot1}
+# for pdf output, un-comment this section
+library(ggplot2)
+library(gganimate)
+
+# Males:
+mortData = createMortData(year_start=1984,year_end=2016,age_start=80,age_end=80,sex="m",sex_cat="no")
+theme_set(theme_bw(base_size = 14))
+
+m <- ggplot(mortData,aes(year, y, group = country, color = country)) +
+  geom_line(size=0.75) +
+  ylim(-3.60, -1.85) + 
+  labs(x = "Years", y = "Log-mortality", caption = "(Based on data from HMD)") +
+  scale_x_continuous(breaks=seq(1984, 2016, 4)) +
+  theme(legend.position = "right") +
+  ggtitle("Age 80 - Males") + geom_point(size=2) + transition_reveal(year) +
+  scale_color_manual(values = c("antiquewhite2","aquamarine4","blue1","plum1",
+  "red","burlywood3","cadetblue1","#C3D7A4",
+  "cornflowerblue","#FFDB6D","darkorchid2","deeppink",
+  "dimgrey","green","darkorange","black")) +
+  theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank()) 
+animate(m, width = 450, height = 450)
+anim_save("amimatePlot1.gif")
+```
+
+```{r, cache = TRUE, echo = FALSE, amimatePlot2}
+# for pdf output, un-comment this section
+library(ggplot2)
+library(gganimate)
+
+# Females:
+mortData = createMortData(year_start=1984,year_end=2016,age_start=80,age_end=80,sex="f",sex_cat="no")
+theme_set(theme_bw(base_size = 14))
+
+f <- ggplot(mortData,aes(year, y, group = country, color = country)) +
+  geom_line(size=0.75, linetype = "twodash") +
+  ylim(-3.60, -1.85) + 
+  labs(x = "Years", y = "Log-mortality", caption = "(Based on data from HMD)") +
+  scale_x_continuous(breaks=seq(1984, 2016, 4)) +
+  theme(legend.position = "right") +
+  ggtitle("Age 80 - Females") + geom_point(size=2) + transition_reveal(year) +
+  scale_color_manual(values = c("antiquewhite2","aquamarine4","blue1","plum1",
+  "red","burlywood3","cadetblue1","#C3D7A4",
+  "cornflowerblue","#FFDB6D","darkorchid2","deeppink",
+  "dimgrey","green","darkorange","black")) + 
+  theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank()) 
+animate(f, width = 450, height = 450)
+anim_save("amimatePlot2.gif")
+```
+</div>
+  
+  * $\color{blue}{\texttt{covICM.R}}$: to define the ICM Kernel with pre-specified number of populations and choice of rank. Users can directly modify this script according to their own analyses (E.g: provide different covariance kernel over Age-Year inputs, adjust the lower and upper bounds of the hyperparameters, re-name the hyperparameters, etc.). In ICM, each output $f_l$ is assumed be a linear combination of independent latent GPs. Let $u_1(\mathbf{x}),\ldots,u_Q(\mathbf{x})$ be independent latent functions each from a GP prior with covariance kernel $C^{(u)}(\mathbf{x,x'})$. The modeled outputs $f_l$  are linear combinations of these $Q$ latent factors:
+$$\begin{equation}
+    f_l(\mathbf{x}) = a_{l,1}u_1(\mathbf{x}) + \ldots + a_{l,Q}u_Q(\mathbf{x}) = \sum_{q=1}^Q a_{l,q}u_q(\mathbf{x}),
+\end{equation}$$
+where $a_{l,q}$'s are the factor loadings. Let $\mathbf{a}_q=(a_{1,q},\ldots,a_{L,q})^{T}$ be the vector representing the collection of linear coefficients associated with the q$th$ latent function across the $L$ outputs, so that $\mathbf{f(x)} = \sum_{q=1}^Q \mathbf{a}_qu_q(\mathbf{x})$. It follows that the covariance for $\mathbf{f(x)}$ is:
+$$\begin{align}
+    \mathbf{C}(x,x') = \text{Cov} \left(\mathbf{f(x)},\mathbf{f(x')} \right) & = \text{Cov}\bigg(\sum_{q=1}^Q \mathbf{a}_qu_q(\mathbf{x}),\sum_{q=1}^Q \mathbf{a}_qu_q(\mathbf{x'})\bigg) \\
+    & = \bigg(\sum_{q=1}^Q \mathbf{a}_q\mathbf{a}_q^T\bigg) \otimes \text{Cov} \left(u_q(\mathbf{x}),u_q(\mathbf{x'}) \right) \\
+    % & = AA^T \otimes Cov(u_q(\mathbf{x}),u_q(\mathbf{x'}))  \\
+    & = AA^T \otimes C^{(u)}(\mathbf{x,x'}) 
+\end{align}$$
+where matrix $A = (\mathbf{a}_1,\ldots,\mathbf{a}_Q)$ and $\otimes$ is the Kronecker matrix product. Re-parametrizing by $B:=AA^T$, the above equation can be expressed as the Kronecker product between the cross-population covariance $B \in \mathbb{R}^{L \times L}$ and the covariance over the Age-Year inputs $\mathbf{C}^{(u)} \in \mathbb{R}^{N \times N}$:
+$$\begin{equation}
+    \mathbf{C}=\text{Cov}(\mathbf{f(x),f(x')}) = B \otimes \mathbf{C}^{(u)}.
+\end{equation}$$
+
+<div class="alert alert-success">
+`r icon::fa_microscope(colour = "#059b33", size = 1)` &nbsp; Under ICM, the number of hyperparameters in the cross-population covariance is reduced from $L(L-1)/2$ to $Q \times L$. Therefore, taking $Q<L/2$ allows to reduce the hyper-parameter space and alleviate the computational budget compared to the full- rank setup. Notably the assumption in ICM that all $L$ populations share the common spatial covariance suits our interest in the inference of joint lengthscales in Age and Year dimensions. The computational complexity required in ICM is greatly simplified due to the properties of the Kronecker product. Finally, ICM allows the process variance $\eta^2_l$ to vary by populations,  i.e., the l$th$ element in the diagonal in $B$ is the process variance for population $l$. This further bolsters the flexibility in MOGP to excel in out-of-sample forecasts.
+</div>
+
+  * $\color{blue}{\texttt{gp_predictionICM.R}}$: to perform prediction. Outputs contain the predicted mean and the posterior variance at new inputs $\mathbf{x_*}$ for the latent function $\mathbf{f_*}$ and observed outputs $\mathbf{y_*}$. The cross-covariance matrix between two sets of locations are also provided. 
+  
+Lastly, we write an R function to create integer coding for populations in MOGP model. This is equivalent to create dummy variables for a categorical variable. 
+
+```{r, integerCode}
+intCtry = function(ctry){
+  # ctry: list of countries (or populations) in the model
+  subdt = mortData[country %in% ctry] 
+  ctry = ctry[order(ctry)]
+  for (i in 1:length(ctry)){
+    subdt[country==ctry[i], popN:=i]
+  }
+  return(subdt)
+}
+```
+
+For the remaining of this ICM tutorials, we will illustrate several examples how to fit ICM-MOGP models with different populations. We will show that borrowing information from other populations boosts the predictive power for out-of-sample forecasts. Finally, we explain how MOGP models achieve the coherence in long-term forecats and compare the results with SOGP models. 
+
+# Two-population ICM
+
+## Example 1: Denmark and Sweden, Males
+
+### Fitting Denmark-Sweden ICM ###
+
+We first prepare an aggregated data that combines Danish and Swedish mortality for Males, on Ages 70--84 and Years 1990--2012. Denmark is coded as 1 and Sweden is coded as 2.
+
+```{r, loadDataI}
+mortData = createMortData(year_start=1990, year_end=2012, 
+                          age_start=70, age_end=84,
+                          sex="m", sex_cat="no")
+# contain mortality data [ages 70--84 & years 1990--2012] for all 16 Male populations
+
+ctry = c("Denmark","Sweden")
+mortData = mortData[country %in% ctry]
+mortData = intCtry(ctry)
+```
+
+The output vector ($y$) and input vector ($X$) must be provided. We have to change names of the columns in $X$ to match input names defined in $\color{blue}{\texttt{covICM.R}}$ script. 
+
+```{r, createData}
+y = mortData[,y] # output values
+X = mortData[,.(age,year,popN)] # input values 
+X = as.matrix(X,ncol=3)
+X = as.data.frame(X)
+names(X) = c("x1","x2","x3")
+```
+
+Prior to fitting the model, we also need to specify the number of populations and choice of rank. In this example, we have 2 populations (Male Danish and Male Swedish) and the rank value is 2. The function $\color{blue}{\texttt{gp()}}$ within `kergp` package can be called to fit the model. 
+
+```{r, cache=TRUE, example1}
+rank = 2
+num_pop = 2
+gpFit <- gp(formula = y ~ X$x1 + as.factor(X$x3), # mean function (linear in Age)
+            data = data.frame(y, X), 
+            inputs = names(X), 
+            cov = covICM(rank,num_pop),
+            compGrad = FALSE,
+            estim = TRUE, 
+            noise = TRUE, 
+            varNoiseIni = 1.0e-3, 
+            varNoiseLower = 1.0e-5, 
+            varNoiseUpper = 1.0e-2,
+            parCovIni = c(10,10,rep(0.15,rank*num_pop)),
+            # multistart = 4,
+            optimMethod = "NLOPT_LN_COBYLA",
+            opts=list("xtol_rel" = 1.0e-5,
+                      "check_derivatives_tol" = 1.0e-5,
+                      "population" = 120, 
+                      # "print_level" = 2, 
+                      "maxeval" = 150))
+```
+
+There are several important arguments in $\color{blue}{\texttt{gp()}}$ function:
+  
+  * $\color{blue}{\texttt{formula}}$: the left-hand side of is the reponse name and right-hand side is the trend covariates. 
+  * $\color{blue}{\texttt{data}}$: contains the reponse $y$ and the inputs $X$.
+  * $\color{blue}{\texttt{cov}}$: user-defined covariance kernel. In this case, we define the ICM kernel through the $\color{blue}{\texttt{covICM()}}$ function with $\color{blue}{\texttt{rank = 2}}$ and $\color{blue}{\texttt{num_pop = 4}}$. 
+  * $\color{blue}{\texttt{estim}}$: logical argument, if $\color{blue}{\texttt{TRUE}}$: the model parameters are estimated by Maximum Likelihood. 
+  * $\color{blue}{\texttt{noise}}$: logical argument, if $\color{blue}{\texttt{TRUE}}$: estimate noise in the error term. 
+  * $\color{blue}{\texttt{multistart}}$: different starting points for optimization process. Users are encouraged to load parallel backend (`doParallel`). 
+  * $\color{blue}{\texttt{opts}}$: controls the optimization properties. Look up $\color{blue}{\texttt{nloptr::nloptr.get.default.options()}}$ for more information. 
+  
+The summary output of the fitted model contains parameters in both the mean and the covariance kernel:
+
+```{r, shownExample1}
+summary(gpFit)
+```
+
+Within the covariance ICM, we can extract the factor loadings and compute the cross-covariance matrix $B$:
+
+```{r, covExample1}
+a.loadings <- gpFit$covariance@par[3:length(gpFit$covariance@par)]
+group.loadings <- split(a.loadings,ceiling(seq_along(a.loadings)/num_pop))
+B <- Reduce("+",lapply(group.loadings,function(x) x%*%t(x)))
+rownames(B) <- ctry; colnames(B) <- ctry
+B
+```
+
+We can infer cross-correlation matrix $R$ from $B$:
+
+```{r, corrExample1}
+R <- cov2cor(B)
+R
+```
+
+Thus, the correlation between Denmark and Sweden is: $r_{DEN,~SWE} \approx 0.70$.
+
+__Out-of-sample prediction via Denmark-Sweden ICM__
+
+We first create a test set to predict log-mortality for Age group 70--84 in year 2013 (one-year out), 2015 (3-year out) and 2016 (4-year out): 
+
+```{r, testData}
+yearsForecast = c(2013, 2015, 2016)
+agesForecast  = 70:84
+nYr = length(yearsForecast)
+nAg = length(agesForecast)
+npop = num_pop
+
+xPred = data.frame(x1 = rep(agesForecast, npop * nYr),
+                   x2 = rep(rep(yearsForecast, each = nAg), npop),
+                   x3 = rep(1:npop, each = nYr * nAg))
+# 1 is Denmark and 2 is Sweden
+```
+
+We then extract $\sigma^2_l$ from single-population models. In this case, we want $\sigma^2_{DEN}$ and $\sigma^2_{SWE}$ resulted from two single-population models, fitted on Male populations in Denmark and Sweden, Ages 70--84 and Years 1990--2012. For covenience purpose, the `nugget_mortData.Rda` is the R dataset that contains the estimated $\sigma^2_l$ in SOGP models fitted on Ages 70--84 and different periods for 16 Male populations in this study. 
+
+```{r, nug}
+load("nugget_mortData.Rda")
+nugget = nugget[country %in% ctry & nug.year==2012]
+nugget = nugget[order(country)]
+(list.nug = nugget$nug)
+```
+
+Finally, we can apply the user-defined function $\color{blue}{\texttt{gp.predict()}}$ in $\color{blue}{\texttt{gp_predictionICM.Rda}}$ script for prediction:
+
+```{r, predExample1}
+out = gp.predict(newdata = xPred, 
+                 gpmodel = gpFit, 
+                 list.noise = list.nug, 
+                 meanTr = "linearAg", # linear in Age only
+                 typePred = "fnoise") # yhat and std(y)
+# if typePred != "fnoise", variance and std of latent function f
+predicted = out$res
+```
+
+The table below displays a few examples of the prediction on the test set for Denmark ($popN=1$) and Sweden ($popN=2$). The prediction results are the predicted mean, standard deviation and the posterior variance (we don't show the cross-covariance here). Users have the option to estimate either the variance of the underlying function $f_*()$ or the observed values $y_*$. Here, we are showing the variance (and standard deviation) of $y_*$:
+
+```{r, echo=FALSE, display1}
+df_html <- knitr::kable(predicted[c(1,2,46,47),], "html")
+kable_styling(df_html,bootstrap_options = "striped", full_width = F)
+```
+
+To assess model performance, we can compute the symmetric mean absolute percentage error:
+$$SMAPE:=\dfrac{100}{M}\sum_{i=1}^M\dfrac{|y_*^i-m_*(x_*^i)|}{(|y_*^i|+|m_*(x_*^i)|)/2}$$
+where $y_*^i$ is the observed value at test input $x_*^i$, $m_*(x_*^i)$ is the predicted log-mortality rate by the model, and $M$ is the number of inputs in the test set. 
+
+```{r, performanceExample1}
+# data with observed values:
+mortData = createMortData(year_start=1990, year_end=2016, age_start=70, age_end=84,
+                          sex="m", sex_cat="no")
+yearsForecast = c(2013,2015,2016)
+agesForecast = 70:84
+observed= mortData[age %in% agesForecast & year %in% yearsForecast & country %in% ctry,]
+observed = intCtry(ctry)
+
+# merge observed data with predicted one:
+compareGP = as.data.table(merge(predicted, observed, all.x=T, by=c("age","year","popN")))
+smape = compareGP[,.(smape = mean(200*abs(y-mean)/(abs(y)+abs(mean)))),
+                  by=.(country,year)]
+```
+
+```{r, echo = FALSE, display2}
+df_html <- knitr::kable(smape, "html")
+kable_styling(df_html,bootstrap_options = "striped", full_width = F)
+```
+
+### Fitting single-population for Denmark and Sweden ###
+
+Next, we employ $\color{blue}{\texttt{km()}}$ function in the package `DiceKriging` to fit single-population models for Male observations, Ages 70--84 and Years 1990--2012 in Denmark and Sweden. 
+
+```{r, cache=TRUE, fitSingle}
+mortData = createMortData(year_start=1990,year_end=2012,age_start=70,age_end=84,
+                          sex="m",sex_cat="no")
+mortData = mortData[country %in% ctry]
+
+# Single models:
+countryUnq = unique(mortData$country)
+
+mortSingle_nug = list()
+nug = list()
+mortSingle = list()
+
+for (i in 1:length(countryUnq))
+{
+  xMort = data.frame(age = mortData$age[mortData$country==countryUnq[i]], 
+                     year = mortData$year[mortData$country==countryUnq[i]])
+  yMort = mortData$y[mortData$country==countryUnq[i]]
+  mortSingle_nug[[i]] = km(formula = ~x.age, 
+                              design = data.frame(x = xMort), response = yMort,
+                              nugget.estim=TRUE,
+                              covtype="gauss",
+                              optim.method="gen",
+                              upper = c(45,45),
+                              control=list(max.generations=100,pop.size=100,
+                                           wait.generations=10,
+                                           solution.tolerance=1e-5,
+                                           print.level = 0))
+  show(mortSingle_nug[[i]])
+  nug[i] = mortSingle_nug[[i]]@covariance@nugget 
+  mortSingle[[i]] = km(formula = ~x.age, 
+                       design = mortSingle_nug[[i]]@X, 
+                       response = mortSingle_nug[[i]]@y,
+                       noise.var = rep(nug[i],mortSingle_nug[[i]]@n), 
+                       coef.trend = mortSingle_nug[[i]]@trend.coef,  
+                       coef.cov = mortSingle_nug[[i]]@covariance@range.val,
+                       coef.var = mortSingle_nug[[i]]@covariance@sd2, 
+                       covtype = mortSingle_nug[[i]]@covariance@name)
+}
+```
+
+We apply the two single GP models fitted above to predict out-of-sample prediction for Ages 70--84 in Year 2013, 2015, and 2016. Then, we compute SMAPE values and compare the results with MOGP models. 
+
+```{r, smapeSingle}
+yearsForecast = c(2013, 2015, 2016)
+agesForecast  = 70:84
+nYr = length(yearsForecast)
+nAg = length(agesForecast)
+
+for (i in 1:length(countryUnq)){
+  mortData = createMortData(year_start=2013,year_end=2016,age_start=70,age_end=84,
+                            sex="m",sex_cat="no")
+  observed = mortData[age %in% agesForecast & year %in% yearsForecast 
+                      & country==countryUnq[i]]
+  observed = observed[order(year)]
+  
+  xPred = data.table(age = rep(agesForecast, nYr),
+                     year = rep(yearsForecast, each = nAg))
+  mortPred = predict(mortSingle[[i]], newdata=data.frame(x=xPred),
+                     cov.compute=TRUE, se.compute=TRUE,type="UK")
+  xPred$mean = mortPred$mean
+  xPred$y = observed$y
+
+  # smape:
+  print(countryUnq[i])
+  smape = xPred[,.(smape = mean(200*abs(y-mean)/(abs(y)+abs(mean)))),by=.(year)]
+  print(smape)
+}
+```
+
+`r icon::fa_thumbs_up(colour = "#059b33", size = 1)` &nbsp; MOGP forecast is more accurate (smaller SMAPE) than SOGP for both populations. 
+
+__Visualization of the prediction performance__
+
+To compare the prediction performance between single-population models and 2-population ICM, one way is to visualize the predicted values and the 95% credible bands of the prediction. Here, we illustrate how to compare the results in Sweden. 
+
+Prediction and 95% credible bands via Denmark-Sweden ICM:
+
+```{r, compare_predictionICM}
+yearsForecast = 1990:2020
+agesForecast  = c(70,84)
+nYr = length(yearsForecast)
+nAg = length(agesForecast)
+npop = num_pop
+
+xPred = data.frame(x1 = rep(agesForecast, each = nYr),
+                   x2 = rep(yearsForecast, nAg),
+                   x3 = rep(1:npop, each = nYr*nAg))
+
+out = gp.predict(newdata = xPred, 
+                 gpmodel = gpFit, 
+                 list.noise = list.nug, 
+                 meanTr = "linearAg", 
+                 typePred = "fnoise") 
+
+predictedJ = out$res
+predictedJ$l95 = predictedJ$mean - 1.96*predictedJ$std
+predictedJ$u95 = predictedJ$mean + 1.96*predictedJ$std
+predictedJ$rate = exp(predictedJ$mean) 
+predictedJ$l95r = exp(predictedJ$l95)
+predictedJ$u95r = exp(predictedJ$u95)
+```
+
+Prediction and 95% credible bands via single-population GP for Sweden:
+
+```{r, compare_predictionSingle}
+yearsForecast = 1990:2020
+agesForecast  = c(70,84)
+nYr = length(yearsForecast)
+nAg = length(agesForecast)
+swe = data.frame(age = rep(agesForecast, each=nYr),
+                 year= rep(yearsForecast, nAg))
+mortPred = predict(mortSingle[[2]], 
+                   newdata=data.frame(x=swe),
+                   cov.compute=TRUE, se.compute=TRUE,type="UK")
+swe$m = mortPred$mean
+y_sd = sqrt((mortPred$sd ^ 2) + nug[[2]])
+swe$lower95  = mortPred$mean - 1.96 * y_sd # predictive CI for y
+swe$upper95  = mortPred$mean + 1.96 * y_sd
+
+swe$rate = exp(swe$m)
+swe$l95r = exp(swe$lower95)
+swe$u95r = exp(swe$upper95)
+```
+
+The interactive plots to visualize the predicted means and their 95% credible bands for Age 70 & 84 are below (R code for non-interactive plots are also provided). Note that the forecast period includes both in-sample (1990-2012) and out-of-sample (2013-2020). 
+
+```{r, visualize_SwedenPrediction, fig.show = "hold", out.width = "50%", echo=FALSE, include=FALSE}
+# Non-interactive plots:
+
+# observed values:
+mortData = createMortData(year_start=1990,year_end=2016,age_start=70,age_end=84,
+                          sex="m",sex_cat="no")
+observed = mortData[country=="Sweden"]
+
+agesForecast  = c(70,84)
+
+for (ageObs in agesForecast){
+  
+  sweAge = swe[swe$age==ageObs,]
+  rateS = sweAge$rate
+  l95S = sweAge$l95r; u95S = sweAge$u95r
+  
+  rateJ = predictedJ$rate[predictedJ$age==ageObs & predictedJ$popN==2]
+  l95J = predictedJ$l95r[predictedJ$age==ageObs & predictedJ$popN==2]
+  u95J = predictedJ$u95r[predictedJ$age==ageObs & predictedJ$popN==2]
+  
+  # namePlot = paste("95CI_mortality_Sweden_",ageObs,".pdf",sep="")
+  # pdf(namePlot,width=7,height=5)
+
+  plot(yearsForecast, rateS, type="l",lwd=4, 
+       main=paste("Age",ageObs), 
+       xlab="Year",xaxs="i",yaxs="i",ylab="Mortality Rate", 
+       cex.axis=1.5, cex.lab=1.5, cex=1.5, xlim=c(1990,2020),
+       ylim=c(min(c(l95S,l95J)),max(c(u95S,l95J))),col="goldenrod")
+  
+  lines(yearsForecast, u95S, col="goldenrod", lwd=1, lty=3)
+  lines(yearsForecast, l95S, col="goldenrod", lwd=1, lty=3)
+  # shade the CI's of the GP estimates
+  col_tran1 = adjustcolor("gold",alpha.f =0.5)
+  polygon(c(yearsForecast,rev(yearsForecast)),
+          c(u95S,rev(l95S)),
+          col=col_tran1,border = NA)
+  
+  lines(yearsForecast,rateJ,col="hotpink4",lwd=3,lty=1)
+  lines(yearsForecast,u95J,col="hotpink4",lwd=1,lty=3)
+  lines(yearsForecast,l95J,col="hotpink4",lwd=1,lty=3)
+  # shade the CI's of the GP estimates
+  col_tran2 = adjustcolor("hotpink",alpha.f =0.25)
+  polygon(c(yearsForecast,rev(yearsForecast)),
+          c(u95J,rev(l95J)),
+          col=col_tran2,border = NA)
+  
+  # add scattered points:
+  rateObserved = observed[age==ageObs,rate]
+  points(1990:2016,rateObserved,pch=19,cex=1,col="black")
+  points(1990:2016,rateObserved,pch=19,cex=0.85,col="blue")
+  legend("bottomleft",c("Observed values in the test set",
+                        "Predictive mean via SOGP & 95% CB",
+                        "Predictive mean via MOGP & 95% CB"),
+         lwd=c(NA,5,5),lty=c(NA,1,1),pch = c(19,NA,NA),
+         col=c("blue","goldenrod","hotpink"),bty="n",pt.cex=1.5)
+  # dev.off()
+}
+```
+
+```{r, visualize_SwedenPrediction_Inter, plotly=TRUE, echo = FALSE}
+# observed values:
+mortData = createMortData(year_start=1990,year_end=2016,age_start=70,age_end=84,
+                          sex="m",sex_cat="no")
+observed = mortData[country=="Sweden"]
+
+agesForecast  = c(70,84)
+
+P <- list()
+titleF = list(family = "sans serif", size = 25)
+axesF =  list(family = "sans serif", size = 20)
+
+for (i in 1:length(agesForecast)){
+  ageObs = agesForecast[i]
+  rateObserved = observed[age==ageObs,rate]
+  
+  sweAge = swe[swe$age==ageObs,]
+  rateS = sweAge$rate
+  l95S = sweAge$l95r; u95S = sweAge$u95r
+  
+  rateJ = predictedJ$rate[predictedJ$age==ageObs & predictedJ$popN==2]
+  l95J = predictedJ$l95r[predictedJ$age==ageObs & predictedJ$popN==2]
+  u95J = predictedJ$u95r[predictedJ$age==ageObs & predictedJ$popN==2]
+  
+  col_tran1 = adjustcolor("gold",alpha.f =0.5)
+  col_tran2 = adjustcolor("hotpink3",alpha.f =0.3)
+
+  fig <- plot_ly()
+  fig <- fig %>% add_lines(x = yearsForecast, y = round(rateS,4),
+                           mode = "lines",
+                           name = "SOGP: predicted mean",
+                           line = list(color = "goldenrod", width = 3))
+  fig <- fig %>% add_ribbons(x = yearsForecast,
+                             ymin = round(l95S,4),
+                             ymax = round(u95S,4),
+                             line = list(color = 'goldenrod', 
+                                         width = 0.10),
+                             fillcolor = col_tran1,
+                             name = "SOGP: 95% CB")
+  fig <- fig %>% add_lines(x = yearsForecast, y = round(rateJ,4), 
+                           mode = "lines", 
+                           color = I("hotpink4"), 
+                           name = "MOGP: predicted mean",
+                           line = list(width = 3))
+  fig <- fig %>% add_ribbons(x = yearsForecast,
+                             ymin = round(l95J,4),
+                             ymax = round(u95J,4),
+                             line = list(color = 'hotpink4', 
+                                         width = 0.10),
+                             fillcolor = col_tran2,
+                             name = "MOGP: 95% CB")
+  fig <- fig %>% add_markers(x = 1990:2016, y = round(rateObserved,4), 
+                             marker = list(color="blue", size=7, line=list(color="black",width=0.5)),
+                             showlegend = TRUE,
+                             name = "observed values")
+  fig <- fig %>% layout(xaxis = list(title = 'Year', 
+                                     titlefont = axesF, 
+                                     showgrid = F, 
+                                     showline = TRUE, 
+                                     ticks = "outside",
+                                     range = c(1990,2020)),
+                        yaxis = list(title = 'Mortality Rate', 
+                                     titlefont = axesF, 
+                                     showgrid = F, 
+                                     ticks = "outside",
+                                     showline = TRUE),
+                        title = list(text = paste("Age ",ageObs),
+                                     font = titleF,
+                                     x = 0.50,
+                                     y = 0.99),
+                        autosize = F,
+                        width = 600, 
+                        height = 400,
+                        legend = list(x = 0.65, y = 1))
+  P[[i]] <- fig
+}
+```
+
+```{r, echo = FALSE}
+div(ggplotly(P[[1]]) %>% config(displayModeBar = F), align = "center")
+```
+<p>&nbsp; 
+```{r, echo = FALSE}
+div(ggplotly(P[[2]]) %>% config(displayModeBar = F), align = "center")
+```
+
+`r icon::fa_thumbs_up(colour = "#059b33", size = 1)` &nbsp; The model prediction starts to diverge for $x_{yr} \geq 2013$. We see that the predicted curves produced by a joint model are closer to the observed values in the test period from 2013--2016. We also observe that the posterior variance in MOGP is smaller than one from SOGP model (the 95% credible bands are smaller in MOGP). 
+
+## Example 2: Males & Females in Denmark
+
+### Fitting Danish Male-Female ICM ###
+
+Similar to Example 1, we create an aggregated mortality data to combine Danish Males and Females, on Ages 70--84 and Years 1990--2012. Females are coded as 0 and Males are coded as 1.
+
+```{r, loadDataII}
+mortData = createMortData(year_start=1990, year_end=2012, age_start=70, age_end=84,
+                          sex="m", sex_cat="yes")
+mortData = mortData[country=="Denmark"]
+mortData = mortData[order(sex)]
+# sex=0: Females and 1: Males
+
+y = mortData[,y] # output values
+X = mortData[,.(age,year,sex)] # input values 
+X = as.matrix(X,ncol=3)
+X = as.data.frame(X)
+names(X) = c("x1","x2","x3")
+```
+
+Fitting ICM model for 2 populations and rank 2:
+
+```{r, cache=TRUE, example2}
+rank = 2
+num_pop = 2
+gpFit <- gp(formula = y ~ X$x1 + as.factor(X$x3), # mean function (linear in Age)
+            data = data.frame(y, X), 
+            inputs = names(X), 
+            cov = covICM(rank,num_pop),
+            compGrad = FALSE,
+            estim = TRUE, 
+            noise = TRUE, 
+            varNoiseIni = 1.0e-3, 
+            varNoiseLower = 1.0e-5, 
+            varNoiseUpper = 1.0e-2,
+            parCovIni = c(10,10,rep(0.15,rank*num_pop)),
+            # multistart = 4,
+            optimMethod = "NLOPT_LN_COBYLA",
+            opts=list("xtol_rel" = 1.0e-5,
+                      "check_derivatives_tol" = 1.0e-5,
+                      "population" = 120, 
+                      # "print_level" = 2, 
+                      "maxeval" = 150))
+summary(gpFit)
+```
+
+We can extract the factor loadings and compute the cross-covariance $B$:
+
+```{r, cov-Example2}
+a.loadings <- gpFit$covariance@par[3:length(gpFit$covariance@par)]
+group.loadings <- split(a.loadings,ceiling(seq_along(a.loadings)/num_pop))
+B <- Reduce("+",lapply(group.loadings,function(x) x%*%t(x)))
+rownames(B) <- c("Females","Males"); colnames(B) <- c("Females","Males")
+B
+```
+
+The cross-correlation $R$ is:
+
+```{r, corr-Example2}
+(R <- cov2cor(B))
+```
+
+The correlation between Danish males and females is: $r_{F,~M} \approx 0.57$.
+
+__Out-of-sample prediction via Danish Males-Females ICM__
+
+We create a test set to predict log-mortality for Ages 70--84 in Year 2013, 2015, and 2016:
+
+```{r, testDataII}
+yearsForecast = c(2013, 2015, 2016)
+agesForecast  = 70:84
+nYr = length(yearsForecast)
+nAg = length(agesForecast)
+
+xPred = data.frame(x1 = rep(agesForecast, npop * nYr),
+                   x2 = rep(rep(yearsForecast, each = nAg), npop),
+                   x3 = rep(0:1, each = nYr * nAg))
+```
+
+For prediction, we need to provide the nugget from single-population models, fitted on Female and Male population in Denmark. We then apply the $\color{blue}{\texttt{gp.predict()}}$ function for prediction. 
+
+```{r, predExample2}
+list.nug = c(0.001487166, 0.001516271)
+out = gp.predict(newdata = xPred, 
+                 gpmodel = gpFit, 
+                 list.noise = list.nug, 
+                 meanTr = "linearAg", # linear in Age only
+                 typePred = "fnoise") # yhat and std(y)
+# if typePred != "fnoise", variance and std of latent function f
+predicted = out$res
+```
+
+Below, the table displays examples of the prediction on the test set for Danish Females ($popN=1$) and Danish Males ($popN=2$):
+
+```{r, echo=FALSE}
+df_html <- knitr::kable(predicted[c(1,2,46,47),], "html")
+kable_styling(df_html,bootstrap_options = "striped", full_width = F)
+```
+
+Compute SMAPE values:
+
+```{r, performanceExample2}
+# data with observed values:
+mortData = createMortData(year_start=1990, year_end=2016, age_start=70, age_end=84,
+                          sex="m", sex_cat="yes")
+yearsForecast = c(2013,2015,2016)
+agesForecast = 70:84
+observed = mortData[age %in% agesForecast & year %in% yearsForecast & country=="Denmark",]
+names(observed)[which(names(observed)=="sex")] = "popN"
+
+# merge observed data with predicted one:
+compareGP = as.data.table(merge(predicted, observed, all.x=T, by=c("age","year","popN")))
+smape = compareGP[,.(smape = round(mean(200*abs(y-mean)/(abs(y)+abs(mean))),4)),
+                  by=.(popN,year)]
+```
+
+```{r, echo = FALSE}
+df_html <- knitr::kable(smape, "html")
+kable_styling(df_html,bootstrap_options = "striped", full_width = F)
+```
+
+### Fitting single-population for Males and Females in Denmark 
+
+We are using $\color{blue}{\texttt{km()}}$ function in package `DiceKriging` to fit single-population models for Males and Females in Denmark, Ages from 70--84 and Years 1990--2012:
+
+```{r, cache=TRUE, fitSingleII}
+mortData = createMortData(year_start=1990,year_end=2012,age_start=70,age_end=84,
+                          sex="m",sex_cat="yes")
+mortData = mortData[country=="Denmark"]
+
+# Single models:
+mortSingle_nug = list()
+nug = list()
+mortSingle = list()
+
+for (i in 1:2){
+  xMort = data.frame(age = mortData$age[mortData$sex==(i-1)], 
+                     year = mortData$year[mortData$sex==(i-1)])
+  yMort = mortData$y[mortData$sex==(i-1)]
+  mortSingle_nug[[i]] = km(formula = ~x.age, 
+                              design = data.frame(x = xMort), response = yMort,
+                              nugget.estim=TRUE,
+                              covtype="gauss",
+                              optim.method="gen",
+                              upper = c(45,45),
+                              control=list(max.generations=100,pop.size=100,
+                                           wait.generations=10,
+                                           solution.tolerance=1e-5,
+                                           print.level = 0))
+  show(mortSingle_nug[[i]])
+  nug[i] = mortSingle_nug[[i]]@covariance@nugget 
+  mortSingle[[i]] = km(formula = ~x.age, 
+                       design = mortSingle_nug[[i]]@X, 
+                       response = mortSingle_nug[[i]]@y,
+                       noise.var = rep(nug[i],mortSingle_nug[[i]]@n), 
+                       coef.trend = mortSingle_nug[[i]]@trend.coef,  
+                       coef.cov = mortSingle_nug[[i]]@covariance@range.val,
+                       coef.var = mortSingle_nug[[i]]@covariance@sd2, 
+                       covtype = mortSingle_nug[[i]]@covariance@name) 
+}
+```
+
+Compute SMAPE values for out-of-sample prediction:
+
+```{r, smapeSingleII}
+yearsForecast = c(2013, 2015, 2016)
+agesForecast  = 70:84
+nYr = length(yearsForecast)
+nAg = length(agesForecast)
+
+for (i in 1:2){
+  mortData = createMortData(year_start=2013,year_end=2016,age_start=70,age_end=84,
+                            sex="m",sex_cat="yes")
+  observed = mortData[age %in% agesForecast & year %in% yearsForecast 
+                      & country=="Denmark" & sex==(i-1)]
+  observed = observed[order(year)]
+  
+  xPred = data.table(age = rep(agesForecast, nYr),
+                     year = rep(yearsForecast, each = nAg))
+  mortPred = predict(mortSingle[[i]], newdata=data.frame(x=xPred),
+                     cov.compute=TRUE, se.compute=TRUE,type="UK")
+  xPred$mean = mortPred$mean
+  xPred$y = observed$y
+
+  # smape:
+  print(paste("sex = ",i-1))
+  smape = xPred[,.(smape = round(mean(200*abs(y-mean)/(abs(y)+abs(mean))),4)),by=.(year)]
+  print(smape)
+}
+```
+
+`r icon::fa_thumbs_up(colour = "#059b33", size = 1)` &nbsp; Again, MOGP model produces more accurate prediction than SOGP for both Males and Females in Denmark.  
+
+__Coherence mortality forecasts__
+
+Fitting GP models for individual populations tends to generate divergence in long-range forecast that are inconsistent with historical patterns. To illustrate, we apply SOGP and MOGP models for out-of-sample forecasts, Age 70. Then, we compute the log-mortality difference between Danish Males and Females.  
+
+Difference in log-mortality between Males and Females for Age 70, projected from 1990--2050, based on two SOGP models:
+
+```{r, divSingle}
+yearsForecast = 1990:2050
+agesForecast = 70:84
+nAg = length(agesForecast)
+nYr = length(yearsForecast)
+
+Fem = matrix(rep(NA, nYr * nAg), ncol = nAg, nrow = nYr)
+Mal = matrix(rep(NA, nYr * nAg), ncol = nAg, nrow = nYr)
+
+for (i in 1:nAg){
+  agesPred = agesForecast[i]
+  
+  nYr = length(yearsForecast)
+  nAg = length(agesPred)
+  
+  xPred = data.table(age=rep(agesPred,nYr),year=rep(yearsForecast,nAg))
+  mortPred = predict(mortSingle[[1]],newdata=data.frame(x=xPred),
+                     cov.compute=TRUE, se.compute=TRUE, type="UK")
+  Fem[,i] = mortPred$mean
+  
+  xPred = data.table(age=rep(agesPred,nYr),year=rep(yearsForecast,nAg))
+  mortPred = predict(mortSingle[[2]],newdata=data.frame(x=xPred),
+                     cov.compute=TRUE, se.compute=TRUE, type="UK")
+  Mal[,i] = mortPred$mean
+}
+
+DiffLog70 = round(Mal-Fem,3)
+```
+
+Difference in log-mortality between Males and Females for Age 70, projected from 1990--2050, based on MOGP model:
+
+```{r, conICM2}
+yearsForecast = 1990:2050
+agesForecast = 70:84
+nAg = length(agesForecast)
+nYr = length(yearsForecast)
+
+FemJ = matrix(rep(NA, nYr * nAg), ncol = nAg, nrow = nYr)
+MalJ = matrix(rep(NA, nYr * nAg), ncol = nAg, nrow = nYr)
+
+for (i in 1:nAg){
+  agesPred = agesForecast[i]
+  
+  nYr = length(yearsForecast)
+  nAg = length(agesPred)
+  npop = num_pop
+  
+  xPred = data.frame(x1 = rep(agesPred, npop * nYr),
+                   x2 = rep(rep(yearsForecast, each = nAg), npop),
+                   x3 = rep(0:1, each = nYr * nAg))
+  
+  list.nug = c(0.001487166, 0.001516271)
+  out = gp.predict(newdata = xPred, 
+                   gpmodel = gpFit, 
+                   list.noise = list.nug, 
+                   meanTr = "linearAg", # linear in Age only
+                   typePred = "fnoise") # yhat and std(y)
+
+  FemJ[,i] = out$res$mean[out$res$popN==0]
+  MalJ[,i] = out$res$mean[out$res$popN==1]
+}
+
+DiffLog70J = round(MalJ-FemJ,3)
+```
+
+We further create interactive heatmaps to display the differences from two cases: (i) differences computed from two SOGP models and (ii) differences computed from a MOGP model. Again, all models are fitted for Ages 70--84 in Years 1990--2012. The differences are projected onwards to 2050. 
+<p>&nbsp; 
+```{r, divHeatmap, echo = FALSE}
+# uncomment this portion for regular Heatmap:
+
+# -- 
+# library(fields)
+# par(mar=c(4.5,4.5,2,1))
+# image.plot(t(matrix(DiffLog70, nrow = length(yearsForecast), ncol= 15)), xaxs="i",
+#            yaxs="i", xlab="Age", ylab="Year", main="", axes="F",
+#            cex.axis=1.75, cex.lab=1.5)
+# title(main="")
+# axis(1, at=seq(0,1,length=15), labels=70:84, tick=FALSE, cex.axis=1, line=-0.2)
+# axis(2, at=seq(0,1,by=10/length(yearsForecast)), labels=seq(1990,2060,10), tick=FALSE, cex.axis=1)
+# abline(h=(which(1990:2060==2016)+0.1)/length(1990:2060),lty=2,lwd=2)
+# --
+
+# interactive Heatmap:
+library(heatmaply)
+
+rownames(DiffLog70) <- paste(1990:2050, sep = "")
+colnames(DiffLog70) <- paste(70:84, sep = "")
+revDiffLog70 <- apply(DiffLog70, 2, rev)
+
+my_palette <- colorRampPalette(c("#F5F2DF", "#DECD6A", "#E3A842", "#E87E05", "#DB1511", "#BB47F5", "#720FBD", "#1C0B8A"))(n = 699)
+breaks <- c(seq(-0.06,0,length.out=50), 
+            seq(0.001,0.299,length.out=50),
+            seq(0.300,0.349,length.out=100), 
+            seq(0.350,0.399,length.out=100),
+            seq(0.400,0.449,length.out=100),
+            seq(0.450,0.499,length.out=100),
+            seq(0.500,0.549,length.out=100),
+            seq(0.550,0.610,length.out=100))
+fig<- heatmaply(revDiffLog70, dendrogram = "none", col = my_palette, breaks = breaks,
+          label_names = c("Year", "Age", "Difference"), srtCol = 0,
+          dynamicTicks=TRUE, xlab = "Age", ylab ="Year", fontsize_row = 12,
+          main = "Log-mortality Differences computed via SOGP", 
+          widths = 600, heights = 450, hide_colorbar = FALSE) 
+div(ggplotly(fig) %>% config(displayModeBar = F),
+    align = "center")
+```
+<p>&nbsp; 
+```{r, convHeatmap, echo = FALSE}
+# interactive Heatmap:
+rownames(DiffLog70J) <- paste(1990:2050, sep = "") 
+colnames(DiffLog70J) <- paste(70:84, sep = "")
+revDiffLog70J <- apply(DiffLog70J, 2, rev)
+
+my_palette <- colorRampPalette(c("#E3A842", "#E87E05", "#DB1511", "#BB47F5", "#720FBD", "#1C0B8A"))(n = 599)
+breaks <- c(seq(0.290,0.349,length.out=100), 
+            seq(0.350,0.399,length.out=100),
+            seq(0.400,0.449,length.out=100),
+            seq(0.450,0.499,length.out=100),
+            seq(0.500,0.549,length.out=100),
+            seq(0.550,0.610,length.out=100))
+labC = rep(NA,length(70:84))
+labC[seq(1,15,2)] = seq(70,84,2)
+fig <- heatmaply(revDiffLog70J, dendrogram = "none", col = my_palette, breaks = breaks,
+          label_names = c("Year", "Age", "Difference"), dynamicTicks=TRUE,
+          xlab = "Age", ylab ="Year", fontsize_row = 12, srtCol = 0,
+          main = "Log-mortality Differences computed via MOGP", hide_colorbar = FALSE,
+          widths = 600, heights = 450) 
+div(ggplotly(fig) %>% config(displayModeBar = F),
+    align = "center")
+```
+
+The first heatmap displays the differences via SOGP models. It implies that as early as 2030, Males will have lower mortality than females. `r icon::fa_thumbs_up(colour = "#059b33", size = 1)` &nbsp; In contrast, the second heatmap is the MOGP forecasted differences: it is coherent as Females are projected to maintain higher mortality than Males. 
+
+# Many-population ICM
+
+In this section, we expand the ICM framework to fit many more populations. Specifically, we build a 7-population ICM with Rank 3, on Ages 70--84 and Years 1990--2016 for Male observations. Three scenarios with different assumptions on the mortality improvement factors are fitted. 
+
+__Mortality Improvement Factors__: measures longevity changes year-over-year. In terms of the observations, the raw annual percentage mortality improvement is: 
+$1-\dfrac{\exp{\big(y(x_{ag};x_{yr})\big)}}{\exp{\big(y(x_{ag};x_{yr}-1)\big)}}$. 
+The smoothed improvement factor is obtained by replacing $y$'s by the GP model posterior $m_*$'s:
+$$1-\dfrac{\exp{\big(m_*(x_{ag};x_{yr})\big)}}{\exp{\big(m_*(x_{ag};x_{yr}-1)\big)}}$$
+
+Prior to fitting, we prepare the aggregated data from 7 countries: Austria, Denmark, Germany, Netherlands, Sweden, Switzerland, and UK.
+
+```{r, cache=TRUE, dataICM7}
+mortData = createMortData(year_start=1990, year_end=2016, age_start=70, age_end=84,
+                          sex="m", sex_cat="no")
+ctry = c("Austria","Denmark","Germany","Netherlands","Sweden","Switzerland","UK")
+mortData = mortData[country %in% ctry]
+mortData = intCtry(ctry)
+
+y = mortData[,y] 
+X = mortData[,.(age,year,popN)] 
+X = as.matrix(X,ncol=3)
+X = as.data.frame(X)
+names(X) = c("x1","x2","x3")
+```
+
+__Case I__: Zero long-term mortality improvement, captured by the linear mean function:
+$$m(x^n)=\beta_0+\beta^{ag}_1x_{ag}^n+\sum_{l=2}^L\beta_{pop,l}\big(x_{pop,l}^n\big)$$
+
+```{r, cache=TRUE, ICM7popsCaseI}
+rank = 3
+num_pop = 7
+gpFitI <- gp(formula = y ~ X$x1 + as.factor(X$x3), # mean function (linear in Age)
+             data = data.frame(y, X), 
+             inputs = names(X), 
+             cov = covICM(rank,num_pop),
+             compGrad = FALSE,
+             estim = TRUE, 
+             noise = TRUE, 
+             varNoiseIni = 1.0e-3, 
+             varNoiseLower = 1.0e-5, 
+             varNoiseUpper = 1.0e-2,
+             parCovIni = c(10,10,rep(0.10,rank*num_pop)),
+             optimMethod = "NLOPT_LN_COBYLA",
+             opts=list("xtol_rel" = 1.0e-5,
+                       "check_derivatives_tol" = 1.0e-5,
+                       "population" = 150, 
+                       # "print_level" = 2, 
+                       "maxeval" = 150))
+```
+
+__Case II__: Long-term mortality improvement based on a historical pattern, captured by:
+$$m(x^n)=\beta_0 + \beta^{ag}_1x_{ag}^n+\beta^{yr}_1x_{yr}^n + \sum_{l=2}^L \beta_{pop,l}x_{pop,l}^n$$
+
+```{r, cache=TRUE, ICM7popsCaseII}
+gpFitII <- gp(formula = y ~ X$x1 + X$x2 + as.factor(X$x3), # linear in Age and Yr
+             data = data.frame(y, X), 
+             inputs = names(X), 
+             cov = covICM(rank,num_pop),
+             compGrad = FALSE,
+             estim = TRUE, 
+             noise = TRUE, 
+             varNoiseIni = 1.0e-3, 
+             varNoiseLower = 1.0e-5, 
+             varNoiseUpper = 1.0e-2,
+             parCovIni = c(10,10,rep(0.10,rank*num_pop)),
+             optimMethod = "NLOPT_LN_COBYLA",
+             opts=list("xtol_rel" = 1.0e-5,
+                       "check_derivatives_tol" = 1.0e-5,
+                       "population" = 150, 
+                       # "print_level" = 2, 
+                       "maxeval" = 150))
+```
+
+__Case III__: Long-term mortality improvement based on expert judgement. We again use $m(x^n)=\beta_0 + \beta^{ag}_1x_{ag}^n+\beta^{yr}_1x_{yr}^n + \sum_{l=2}^L \beta_{pop,l}x_{pop,l}^n$ but this time the $\beta_1^{yr}$ coefficients is chosen by the modeler. 
+
+```{r, cache=TRUE, ICM7popsCaseIII}
+betaI = gpFitI$betaHat
+betaI.noY = c(betaI[1:2],0,betaI[3:length(betaI)])
+betaII = gpFitII$betaHat
+
+betaIII = (betaI.noY+betaII)/2
+gpFitIII <- gp(formula = y ~ X$x1 + X$x2 + as.factor(X$x3), 
+               beta = betaIII,
+               data = data.frame(y, X), 
+               inputs = names(X), 
+               cov = covICM(rank,num_pop),
+               compGrad = FALSE,
+               estim = TRUE, 
+               noise = TRUE, 
+               varNoiseIni = 1.0e-3, 
+               varNoiseLower = 1.0e-5, 
+               varNoiseUpper = 1.0e-2,
+               parCovIni = c(10,10,rep(0.10,rank*num_pop)),
+               optimMethod = "NLOPT_LN_COBYLA",
+               opts=list("xtol_rel" = 1.0e-5,
+                       "check_derivatives_tol" = 1.0e-5,
+                       "population" = 150, 
+                       # "print_level" = 2, 
+                       "maxeval" = 150))
+```
+
+After fitting these models, we create a test set for all cases to predict both log-mortality and improvement rates for Age 70.
+
+```{r, testSetICM7}
+fordwardYears = 1990:2060
+backwardYears = 1989:2059
+agesForecast = 70
+
+nYr = length(fordwardYears)
+nAg = length(agesForecast)
+npop = num_pop
+
+xPredFord = data.frame(x1 = rep(agesForecast, npop*nYr),
+                       x2 = rep(fordwardYears, npop),
+                       x3 = rep(1:npop, each = nYr))
+xPredBack = data.frame(x1 = rep(agesForecast, npop*nYr),
+                       x2 = rep(backwardYears, npop),
+                       x3 = rep(1:npop, each = nYr))
+
+# nugget extracted from individual models:
+load("nugget_mortData.Rda")
+nugget = nugget[country %in% ctry & nug.year==2016]
+nugget = nugget[order(country)]
+list.nug = nugget$nug
+```
+
+Prediction via Case I:
+
+```{r, cache = TRUE, predict-ICM7-I}
+# log-mortality prediction:
+out = gp.predict(newdata = xPredFord, 
+                 gpmodel = gpFitI, 
+                 list.noise = list.nug, 
+                 meanTr = "linearAg", 
+                 typePred = "fnoise") 
+logmortI = out$res
+
+# improvement rate factors:
+out = gp.predict(newdata = xPredBack, 
+                 gpmodel = gpFitI, 
+                 list.noise = list.nug, 
+                 meanTr = "linearAg", 
+                 typePred = "fnoise") 
+logmortBackI = out$res
+logmortI$impr = 1 - exp(logmortI$mean)/exp(logmortBackI$mean)
+```
+
+Prediction via Case II:
+
+```{r, cache = TRUE, predict-ICM7-II}
+# log-mortality prediction:
+out = gp.predict(newdata = xPredFord, 
+                 gpmodel = gpFitII, 
+                 list.noise = list.nug, 
+                 meanTr = "linearAgYr", 
+                 typePred = "fnoise") 
+logmortII = out$res
+
+# improvement rate factors:
+out = gp.predict(newdata = xPredBack, 
+                 gpmodel = gpFitII, 
+                 list.noise = list.nug, 
+                 meanTr = "linearAgYr", 
+                 typePred = "fnoise") 
+logmortBackII = out$res
+logmortII$impr = 1 - exp(logmortII$mean)/exp(logmortBackII$mean)
+```
+
+Prediction via Case III:
+
+```{r, cache = TRUE, predict-ICM7-III}
+# log-mortality prediction:
+out = gp.predict(newdata = xPredFord, 
+                 gpmodel = gpFitIII, 
+                 list.noise = list.nug, 
+                 meanTr = "linearAgYr", 
+                 typePred = "fnoise") 
+logmortIII = out$res
+
+# improvement rate factors:
+out = gp.predict(newdata = xPredBack, 
+                 gpmodel = gpFitIII, 
+                 list.noise = list.nug, 
+                 meanTr = "linearAgYr", 
+                 typePred = "fnoise") 
+logmortBackIII = out$res
+logmortIII$impr = 1 - exp(logmortIII$mean)/exp(logmortBackIII$mean)
+```
+
+Putting the forecasted log-mortality rates and improvement rates in all 7 populations together:
+<p>&nbsp; 
+```{r, echo = FALSE, include=FALSE}
+col7 = c("#000000", "#D61411", "#C914CF", "#157522", "#5437A6", "#E39632", "#876D4E")
+
+minY = min(c(logmortI$mean, logmortII$mean, logmortIII$mean))
+maxY = max(c(logmortI$mean, logmortII$mean, logmortIII$mean))
+par(mar=c(4.5,4.5,3,2))
+plot(1, type="n", xlim=c(1990,2060), ylim=c(minY,maxY+0.1),
+     ylab="Log-mortality", xlab="Year", xaxs="i", yaxs="i",
+     main=paste("Age 70"), cex.lab=1.25, cex.axis=1.25)
+abline(v=2016,col="gray80")
+for (i in 1:num_pop){
+  lines(1990:2060, logmortI$mean[logmortI$popN==i], col = col7[i], lty = 2)
+}
+for (i in 1:num_pop){
+  lines(1990:2060, logmortII$mean[logmortII$popN==i], col = col7[i])
+}
+for (i in 1:num_pop){
+  lines(1990:2060, logmortIII$mean[logmortIII$popN==i], col = col7[i], lwd = 3)
+}
+# add observed values in 1990--2016:
+mortData = createMortData(year_start=1990, year_end=2016, age_start=70, age_end=70,
+                          sex="m", sex_cat="no")
+ctry = c("Austria","Denmark","Germany","Netherlands","Sweden","Switzerland","UK")
+mortData = mortData[country %in% ctry]
+mortData = intCtry(ctry)
+
+for (i in 1:num_pop){
+  points(1990:2016, mortData$y[mortData$popN==i], pch = 19, cex = 0.65, col = "white")
+  points(1990:2016, mortData$y[mortData$popN==i], pch = 19, cex = 0.55, col = col7[i])
+}
+legend("topright",legend=ctry, col = col7,
+       pch=rep(19,7), bty="n", ncol=4, cex = 0.75)
+legend("bottomleft",legend=c("Case I: Mean function linear in age",
+                             "Case II: Mean function linear in age & year",
+                             "Compromise between Case I & II"),
+       lwd=c(1,1,4),lty=c(2,1,1),bty="n")
+```
+
+```{r, echo = FALSE}
+mortData = createMortData(year_start=1990, year_end=2016, age_start=70, age_end=70,
+                          sex="m", sex_cat="no")
+ctry = c("Austria","Denmark","Germany","Netherlands","Sweden","Switzerland","UK")
+mortData = mortData[country %in% ctry]
+mortData = intCtry(ctry)
+
+col7 = c("#000000", "#D61411", "#C914CF", "#157522", "#5437A6", "#E39632", "#876D4E")
+
+fig <- plot_ly()
+for (i in 1:7){
+  fig <- fig %>% add_lines(x = 1990:2060, 
+                           y = logmortI$mean[logmortI$popN==i], 
+                           mode = "lines",
+                           line = list(color = col7[i], 
+                                       width = 1, 
+                                       dash ="dot"),
+                          legendgroup = ctry[i], 
+                          showlegend = FALSE)
+}
+for (i in 1:7){
+  fig <- fig %>% add_lines(x = 1990:2060, 
+                           y = logmortIII$mean[logmortIII$popN==i], 
+                           mode = "lines",
+                           line = list(color = col7[i], 
+                                       width = 3),
+                           legendgroup = ctry[i], 
+                           showlegend = FALSE)
+}
+for (i in 1:7){
+  fig <- fig %>% add_lines(x = 1990:2060, 
+                           y = logmortII$mean[logmortII$popN==i], 
+                           mode = "lines",
+                           line = list(color = col7[i], 
+                                       width = 1),
+                           legendgroup = ctry[i], 
+                           showlegend = FALSE)
+}
+for (i in 1:7){
+  fig <- fig %>% add_markers(x = 1990:2016, 
+                             mortData$y[mortData$popN==i], 
+                             marker = list(color=col7[i], 
+                                           size=6,
+                                       line=list(color="white",width=0.75)),
+                             name = ctry[i], 
+                             legendgroup = ctry[i])
+}
+fig <- fig %>% layout(xaxis = list(title = 'Year', 
+                                   titlefont = axesF, 
+                                   showgrid = F, 
+                                   ticks = "outside",
+                                   showline = TRUE, 
+                                   range = c(1990,2060)),
+                      yaxis = list(title = 'Log Mortality Rate', 
+                                   titlefont = axesF, 
+                                   showgrid = F, 
+                                   ticks = "outside",
+                                   showline = TRUE),
+                      title = list(text = "Age 70",
+                                   font = titleF,
+                                   x = 0.55,
+                                   y = 0.99),
+                      legend= list(itemsizing='constant', x = 0, y = 0),
+                      autosize = F,
+                      width = 650, height= 450)
+fig <- fig %>% add_annotations(x = 2045, y = -3.35,
+                               text = "Case I: Mean is linear in Age", 
+                               showarrow = TRUE,
+                               ax = 0,
+                               ay = -30,
+                               font = list(color = '#264E86',
+                                           family = 'sans serif',
+                                           size = 16))
+fig <- fig %>% add_annotations(x = 2040, y = -5.5,
+                               text = "Case II: Mean is linear in Age and Year", 
+                               showarrow = TRUE,
+                               ax = -30,
+                               ay = 50,
+                               font = list(color = '#264E86',
+                                           family = 'sans serif',
+                                           size = 16))
+fig <- fig %>% add_annotations(x = 2050, y = -4.25,
+                               text = "Compromise of Case I & II", 
+                               showarrow = TRUE,
+                               ax = 0,
+                               ay = -30,
+                               font = list(color = '#264E86',
+                                           family = 'sans serif',
+                                           size = 16))
+div(ggplotly(fig) %>% config(displayModeBar = F),
+    align = "center")
+```
+
+
+```{r, echo = FALSE, include=FALSE}
+col7 = c("#000000", "#D61411", "#C914CF", "#157522", "#5437A6", "#E39632", "#876D4E")
+
+minY = min(c(logmortI$impr, logmortII$impr, logmortIII$impr))
+maxY = max(c(logmortI$impr, logmortII$impr, logmortIII$impr))
+par(mar=c(4.5,4.5,3,2))
+plot(1, type="n", xlim=c(1990,2060), ylim=c(minY-0.01,maxY+0.01),
+     ylab="YoY Mortality Improvement Rate", xlab="Year", xaxs="i", yaxs="i",
+     main=paste("Age 70"), cex.lab=1.25, cex.axis=1.25)
+abline(v=2016,col="gray80")
+for (i in 1:num_pop){
+  lines(1990:2060, logmortI$impr[logmortI$popN==i], col = col7[i], lty = 2)
+}
+for (i in 1:num_pop){
+  lines(1990:2060, logmortII$impr[logmortII$popN==i], col = col7[i])
+}
+for (i in 1:num_pop){
+  lines(1990:2060, logmortIII$impr[logmortIII$popN==i], col = col7[i], lwd = 3)
+}
+legend("topright",legend=ctry, col = col7,
+       pch=rep(19,7), bty="n", ncol=4, cex = 0.75)
+legend("bottomleft",legend=c("Case I",
+                             "Case II",
+                             "Compromise between Case I & II"),
+       lwd=c(1,1,4),lty=c(2,1,1),bty="n")
+```
+<p>&nbsp; 
+<p>&nbsp; 
+```{r, echo = FALSE}
+fig <- plot_ly()
+for (i in 1:7){
+  fig <- fig %>% add_lines(x = 1990:2060, 
+                           y = logmortI$impr[logmortI$popN==i], 
+                           mode = "lines",
+                           line = list(color = col7[i], 
+                                       width = 1, 
+                                       dash ="dot"),
+                           legendgroup = ctry[i], 
+                           showlegend = FALSE)
+}
+for (i in 1:7){
+  fig <- fig %>% add_lines(x = 1990:2060, 
+                           y = logmortIII$impr[logmortIII$popN==i], 
+                           mode = "lines",
+                           line = list(color = col7[i],
+                                       width = 3),
+                           legendgroup = ctry[i], 
+                           name = ctry[i])
+}
+for (i in 1:7){
+  fig <- fig %>% add_lines(x = 1990:2060, 
+                           y = logmortII$impr[logmortII$popN==i],
+                           mode = "lines",
+                           line = list(color = col7[i], 
+                                       width = 0.8),
+                           legendgroup = ctry[i], 
+                           showlegend = FALSE)
+}
+fig <- fig %>% layout(xaxis = list(title = 'Year', 
+                                   titlefont = axesF, 
+                                   showgrid = F, 
+                                   ticks = "outside",
+                                   showline = TRUE, 
+                                   range = c(1990,2060),
+                                   zeroline = FALSE),
+                      yaxis = list(title = 'YoY Mortality Improvement Rate',
+                                   titlefont = axesF, 
+                                   showgrid = F,
+                                   ticks = "outside",
+                                   showline = TRUE, 
+                                   zeroline = FALSE, 
+                                   range = c(-0.08, 0.08)),
+                      title = list(text = "Age 70",
+                                   font = titleF,
+                                   x = 5.5,
+                                   y = 0.99),
+                      legend= list(x = 0, y = 0),
+                      autosize = F,
+                      width = 650, height= 450)
+fig <- fig %>% add_annotations(x = 2042, y = 0.06,
+                               text = "Case I: Mean is linear in Age", 
+                               showarrow = TRUE,
+                               ax = 30,
+                               ay = -40,
+                               font = list(color = '#264E86',
+                                           family = 'sans serif',
+                                           size = 16))
+fig <- fig %>% add_annotations(x = 2040, y = -0.02,
+                               text = "Case II: Mean is linear in Age and Year", 
+                               showarrow = TRUE,
+                               ax = 20,
+                               ay = 50,
+                               font = list(color = '#264E86',
+                                           family = 'sans serif',
+                                           size = 16))
+fig <- fig %>% add_annotations(x = 2033, y = 0.015,
+                               text = "Compromise of Case I & II", 
+                               showarrow = TRUE,
+                               ax = 0,
+                               ay = 40,
+                               font = list(color = '#264E86',
+                                           family = 'sans serif',
+                                           size = 16))
+div(ggplotly(fig) %>% config(displayModeBar = F),
+    align = "center")
+```
+<p>&nbsp; 
+<p>&nbsp; 
+The choice of mean function $m(.)$ has minimal impact on in-sample forecasts that are largely driven by the training data covering 1990--2016. In contrast, the long-term levels of mortality improvement are completely driven by $m(.)$. When visualizing the forecasts for all cases, we see a strong coherence so that mortality rates across populations all move roughly in unison over time, matching our intuition about the persistent commonality of their future mortality experiences. 
+
+<hr>
