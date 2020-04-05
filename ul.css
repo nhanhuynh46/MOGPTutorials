@@ -1,0 +1,18 @@
+ul.share-buttons{
+  list-style: none;
+  padding: 0;
+}
+
+ul.share-buttons li{
+  display: inline-block;
+}
+
+ul.share-buttons .sr-only{
+  position: relative;
+  clip: rect(0.75px, 0.75px, 0.75px, 0.75px);
+  padding: 0;
+  border: 0;
+  height: 0.5px;
+  width: 0.5px;
+  overflow: hidden;
+}
