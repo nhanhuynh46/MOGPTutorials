@@ -9,10 +9,7 @@ site: rmarkdown::render_site
 <ul class="share-buttons">
   <a href="https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fnhanhuynh46.github.io%2FMOGPTutorials.github.io%2Findex.html&quote=MOGP%20Tutorials" title="Share on Facebook" target="_blank"><img alt="Share on Facebook" src="Facebook.png" align="right" hspace="2" /></a> 
   <a href="https://twitter.com/intent/tweet?source=https%3A%2F%2Fnhanhuynh46.github.io%2FMOGPTutorials.github.io%2Findex.html&text=MOGP%20Tutorials:%20https%3A%2F%2Fnhanhuynh46.github.io%2FMOGPTutorials.github.io%2Findex.html" target="_blank" title="Tweet"><img alt="Tweet" src="Twitter.png" align="right" hspace="2" /></a> 
-  <!-- <a href="https://plus.google.com/share?url=https%3A%2F%2Fnhanhuynh46.github.io%2FMOGPTutorials.github.io%2Findex.html" target="_blank" title="Share on Google+"><img alt="Share on Google+" src="Google+.png" align="right" hspace="2" /></a></li>  -->
   <a href="http://www.reddit.com/submit?url=https%3A%2F%2Fnhanhuynh46.github.io%2FMOGPTutorials.github.io%2Findex.html&title=MOGP%20Tutorials" target="_blank" title="Submit to Reddit"><img alt="Submit to Reddit" src="Reddit.png" align="right" hspace="2"/></a> 
-  <!-- <a href="mailto:?subject=MOGP%20Tutorials&body=:%20https%3A%2F%2Fnhanhuynh46.github.io%2FMOGPTutorials.github.io%2F" target="_blank" title="Send email"><img alt="Send email" src="Email.png" align="right" hspace="2"/></a> -->
-  <!-- <a href="http://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fnhanhuynh46.github.io%2FMOGPTutorials.github.io%2Findex.html&title=MOGP%20Tutorials&summary=&source=https%3A%2F%2Fnhanhuynh46.github.io%2FMOGPTutorials.github.io%2Findex.html" target="_blank" title="Share on LinkedIn"><img alt="Share on LinkedIn" src="LinkedIn.png" align="right" hspace="2" /></a> -->
 </ul>
 
 
