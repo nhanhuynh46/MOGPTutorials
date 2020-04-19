@@ -2,8 +2,8 @@
 title: "MOGP for multi-population longevity modeling  \n Part III - ICM with Notched Data"
 site: rmarkdown::render_site
 author: 
-  - Nhan Huynh, UCSB
   - Mike Ludkovski, UCSB
+  - Nhan Huynh, UCSB
 date: '`r format(Sys.Date(), "%B %d, %Y")`'
 output:
   html_document:
@@ -13,7 +13,7 @@ output:
     toc: yes
     toc_depth: 3
     toc_float: 
-      collapsed: true
+      collapsed: false
       smooth_scroll: true
     number_sections: true
 ---
@@ -31,6 +31,12 @@ output:
 <style type="text/css">
 body{ /* Normal  */
   font-size: 15px;
+  height: 100%;
+  overflow: auto;
+}
+html {
+    overflow: hidden;
+    height: 100%;
 }
 h1.title {
   font-size: 35px;
@@ -70,7 +76,7 @@ library(shiny)
 
 <hr>
 
-In [Part I](MOGP_Mortality_Pops_Part1.html) and [Par II](MOGP_Mortality_Pops_Part2.html), we mainly focus on the use of MOGP model for _isotropic data_, or when all $L$ populations have the same set of inputs. In this tutorials, we will illustrate how to generalize this framework when we have missing data or when populations have different set of inputs. 
+In [Tutorial I](MOGP_Mortality_Pops_Part1.html) and [II](MOGP_Mortality_Pops_Part2.html), we mainly focus on the use of MOGP model for _isotropic data_, or when all $L$ populations have the same set of inputs. In this tutorials, we will illustrate how to generalize this framework when we have missing data or when populations have different set of inputs. 
 
 # Packages and user-defined functions
 
@@ -85,7 +91,7 @@ library(data.table)
 ```
 
   * [`DiceKriging`](https://cran.r-project.org/web/packages/DiceKriging/DiceKriging.pdf): kriging methods for single-output GP (SOGP).
-  * [`rgenoud`](https://cran.r-project.org/web/packages/rgenoud/rgenoud.pdf): solve genetic optimization (for SOGP).
+  * [`rgenoud`](https://cran.r-project.org/web/packages/rgenoud/rgenoud.pdf): genetic optimization solver used for Maximum Likelihood Estimation of GP hyperparameters.
   * [`kergp`](https://cran.r-project.org/web/packages/kergp/kergp.pdf): kriging methods for user-defined kernel, needed for both Full-rank and ICM Multi-output GP. 
   * [`nloptr`](https://cran.r-project.org/web/packages/nloptr/nloptr.pdf): solve nonlinear optimization using R interface to NLopt.
   * [`data.table`](https://cran.r-project.org/web/packages/data.table/data.table.pdf): extension of `data.frame` to enhance data manipulation. 
@@ -117,71 +123,19 @@ source("gp_predictionNotched.R")
       * <img src="https://www.countryflags.io/CH/shiny/24.png"> Switzerland 
       * <img src="https://www.countryflags.io/GB/shiny/24.png"> UK  
   </div>  
-Illustration on the historical evolution of the log- mortality rates for Age 80 from 1984--2016 in 16 European countries, separated by Males (left figure) and Females (right figure). We observed that Female populations have lower mortality rates than Male groups. 
-   
-<div class="col2">   
-  <div>
-  <img src="amimatePlot1.gif" width="450" height="400"/>
-  </div>
-  <div>
-  <img src="amimatePlot2.gif" width="450" height="400">
-  </div>
-</div>
-<p>&nbsp; 
+<!-- Illustration on the historical evolution of the log- mortality rates for Age 80 from 1984--2016 in 16 European countries, separated by Males (left figure) and Females (right figure). We observed that Female populations have lower mortality rates than Male groups.  -->
 
-  * $\color{blue}{\texttt{covICM_Notched.Rda}}$: to define ICM with partially heterotropic data where only a portion of $L$ inputs are available. This is useful as the reported data from different countries in the HMD arrives non-synchronously. For instance, as of March 2020 some countries already have 2018 data added, most have data up to 2017, and a few are still lagging and only have data up to 2016. The prevailing approach is to consider the time period that is common to all countries that are being modeled. This implies that the most recent observations may be dropped for some countries. Of course, such recent data is in fact the most informative for picking up new insights about the present longevity trend. Note that the HMD datasets are updated continuously, so that which datsets have the latest observations changes dynamically over time.\
-<p>&nbsp; 
-```{r, cache = TRUE, echo = FALSE, fig.align = "center"}
-library(plotly)
-library(ggplot2)
+<!-- <div class="col2">    -->
+<!--   <div> -->
+<!--   <img src="amimatePlot1.gif" width="450" height="400"/> -->
+<!--   </div> -->
+<!--   <div> -->
+<!--   <img src="amimatePlot2.gif" width="450" height="400"> -->
+<!--   </div> -->
+<!-- </div> -->
+<!-- <p></p>&nbsp;  -->
 
-country = c("Austria", "Belarus", "Czechia", "Denmark", "Estonia", "France", "Germany", "Hungary", "Latvia", "Lithuania", "Netherlands", "Poland", "Spain", "Sweden", "Switzerland", "UK")
-minYear = c(1950, 1959, 1950, 1950, 1959, 1950, 1990, 1950,
-            1959, 1959, 1950, 1958, 1950, 1950, 1950, 1950)
-maxYear = c(2017, 2016, 2017, 2016, 2017, 2017, 2017, 2017,
-            2017, 2017, 2016, 2016, 2016, 2018, 2016, 2016)
-col = c("antiquewhite2","aquamarine4","blue1","plum1",
-        "red","burlywood3","cadetblue1","#C3D7A4",
-        "cornflowerblue","#FFDB6D","darkorchid2","deeppink",
-        "dimgrey","green","darkorange","black")
-
-
-fig <- plot_ly(hovertemplate = paste('%{y}', '<br>Year: %{x}<br>'),
-               name = "")
-for (i in 1:16){
-  fig <- fig %>% add_markers(x = minYear[i]:maxYear[i], 
-                             y = country[i], 
-                             marker = list(color = col[i],
-                                           size=7, 
-                                           line=list(color="white",
-                                                     width=1),
-                                           symbol = "square"),
-                             showlegend = FALSE)
-}
-fig <- fig %>% layout(xaxis = list(titlefont = list(size=20), 
-                      showgrid = F, 
-                      showline = TRUE,
-                      ticks = "outside",
-                      range = c(1948,2021)),
-                      yaxis = list(showgrid = F, 
-                                   showline = FALSE,
-                                   range = c(-0.5,17)),
-                      title = list(text = "Data availability",
-                                   x = 0.1,
-                                   y = 0.99),
-                      autosize = F)
-fig <- fig %>% add_annotations(x = 2005, y = 16.25,
-                               text = "Date of Pull from the HMD: March, 2020", 
-                               showarrow = FALSE,
-                               font = list(color = '#264E86',
-                                           family = 'sans serif',
-                                           size = 14))
-div(ggplotly(fig) %>% config(displayModeBar = F),
-    align = "center")
-```
-<p>&nbsp; 
-<p>&nbsp;
-<p>
+  * $\color{blue}{\texttt{covICM_Notched.Rda}}$: to define ICM with partially heterotropic data where only a portion of $L$ inputs are available. This is useful as the reported data from different countries in the HMD arrives non-synchronously. For instance, as of March 2020 some countries already have 2018 data added, most have data up to 2017, and a few are still lagging and only have data up to 2016. \
 Let $M'$ be the number of distinct inputs across $L$ populations and $M=N_1+...+N_L$ be the number of observations in training data. We consider the setting that $M'<ML$ so that for some inputs, not all $L$ outputs are observed. Define the vector-valued "complete data" function $\mathbf{f(x)}$, with $\mathbf{f(x)} \in \mathbb{R}^{LM' \times 1}$. We further introduce $\mathbf{f}^o\mathbf{(x)}$ as the vector-valued function corresponding to the observed outputs, $\mathbf{f}^o\mathbf{(x)} \in \mathbb{R}^{M \times 1}$. The relation between $\mathbf{f(x)}$ and $\mathbf{f}^o\mathbf{(x)}$ is formulated through the "communication" matrix $S$,
 $\mathbf{f}^o\mathbf{(x)} = S^T\mathbf{f(x)}$,
 where $S \in \mathbb{R}^{LM' \times M}$. The column vectors in $S$ are orthonormal with values of 0 and 1 to eliminate the unobserved outputs. Applying linear transformation to a MVN vector, we can then identify the distribution of $\mathbf{\mathbf{f}^o\mathbf{(x)}}$ as a GP with covariance: $$\text{Cov}(\mathbf{f}^o\mathbf{(x)},\mathbf{f}^o\mathbf{(x')})=S^T \text{Cov}(\mathbf{f(x)},\mathbf{f(x')})S = S^T(B \otimes K)S,$$ recovering the Kronecker structure.\
@@ -472,7 +426,7 @@ smape = xPred[,.(smape = mean(200*abs(y-mean)/(abs(y)+abs(mean)))),by=.(year)]
 df_html <- knitr::kable(smape, "html")
 kable_styling(df_html,bootstrap_options = "striped", full_width = F)
 ```
-`r icon::fa_thumbs_up(colour = "#059b33", size = 1)` &nbsp; $\text{SMAPE}_{SOGP}=1.575 > \text{SMAPE}_{MOGP}=0.947$. This illustrates how we boosts the predictive power for Hungarian Males by incorporating most recent data from Estonia. 
+`r icon::fa_thumbs_up(colour = "#059b33", size = 1)` &nbsp; $\text{SMAPE}_{SOGP}=1.575 > \text{SMAPE}_{MOGP}=0.947$. Recall that lower SMAPE is better, so the joint Estonia-Hungary model is significantly more accurate than the model fitted to Hungary data only. This illustrates how we boost the model's predictive power by incorporating most recent data from an actuarially-similar population.
 
 The standard deviation of $f_*$ via single model at new inputs:
 
@@ -506,7 +460,7 @@ fig <- fig %>% layout(xaxis = list(title = 'Age',
                                    showgrid = F, 
                                    showline = TRUE, 
                                    range = c(69,85)),
-                      yaxis = list(title = 'Standard Deviation of f*', 
+                      yaxis = list(title = 'Standard Deviation of f<sub>*</sub>', 
                                    titlefont = list(size=20), 
                                    ticks = "outside", 
                                    showgrid = F, 
@@ -517,9 +471,10 @@ fig <- fig %>% layout(xaxis = list(title = 'Age',
 div(ggplotly(fig) %>% config(displayModeBar = F),
     align = "center")
 ```
-<p>&nbsp; 
+<p></p>&nbsp; 
+<p></p>
+`r icon::fa_thumbs_up(colour = "#059b33", size = 1)` &nbsp; The strong correlation between Estonia and Hungary ($r_{EST,~HUN} \approx 0.98$) helps reduce the uncertainty in Hungarian prediction. This is equivalent to increase the forecast credibility in Hungary as the standard deviation of the latent function $f$ at the new inputs via MOGP model are significantly smaller than ones via SOGP. We recommend adding more data that are highly correlated with
+Hungary to further observe improvement in the prediction accuracy and credibility. 
+
 <p>
-`r icon::fa_thumbs_up(colour = "#059b33", size = 1)` &nbsp; Borrowing information from Estonia also increases the forecast credibility: the standard deviation of the latent function $f$ at new inputs is smaller in MOGP than SOGP model. Note that adding more data that are highly correlated with Hungarian mortality data will further improve the accuracy and the credibility of the prediction. 
-
-<hr>
-
+<p>
