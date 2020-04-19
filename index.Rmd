@@ -17,46 +17,72 @@ site: rmarkdown::render_site
 
 # $\color{#c64329}{\text{WELCOME}}$
 
-In this page, we provide a sequence of tutorials on how to fit Multi-output gaussian process (MOGP) for Multi-population longevity modeling. Important datasets and R scripts are provided for the users to follow. For further detail explanation of the methods, please visit our paper posted on the [arXiv](https://arxiv.org/abs/2003.02443). 
+This repository provides a sequence of tutorials on how to fit Multi-output Gaussian process (MOGP) models for *multi-population longevity modeling*. The underlying datasets and R scripts are provided for the users via the GitHub link. For further detailed explanation of the methods, please visit our [arXiv](https://arxiv.org/abs/2003.02443) preprint. 
 
-The structure of the tutorials is grouped into 3 parts:
+The aim of our models is to analyze historical mortality data (especially based on the Human Mortality Database). Rather than direct investigation of the historical experience, our focus is on statistical modeling for the purposes of (i) insights into past and present longevity trends; (ii) data fusion across multiple datasets; (iii) probabilistic forecasting of future longevity trends, especially in the near- (<3 years) and medium-term (3-10 years).
 
-  * [Part I](MOGP_Mortality_Pops_Part1.html): walks you through how to setup MOGP Full rank model with several case studies. We explain how to derive the distribution for the improvement rate factors and compare the results with single-output models. 
-  * [Part II](MOGP_Mortality_Pops_Part2.html): defines the Intrinsic Coregionalization Model (ICM) for MOGP to make more efficient and scalable models, and to achieve dimension reduction. We also illustrate how MOGP models achieve better performance in out-of-sample prediction and generate the coherence in long-term forecast.
-  * [Part III](MOGP_Mortality_Pops_Part3.html): shows how to setup ICM when data has missing values, or not all outputs are observed given a set of input locations. 
+We work with a statistical framework for age-specific mortality; this means that we make mechanistic assumptions about mortality rate as a function of given covariates and do not rely on any further demographic, socio-economic or structural patterns. This paradigm of *stochastic mortality modeling* is appropriate for actuarial analysis that focuses on projecting mortality experience for the intermediate-old ages. 
+
+<div class="alert alert-success">
+`r icon::fa_microscope(colour = "#059b33", size = 1)` &nbsp;
+__Disclaimer:__ Our methodology is much less appropriate for modeling infant and young-adult mortality, extreme ages (90+), or for making long-term projections (10+ years). While the model can certainly be straightforwardly run on such datasets, we strongly caution potential users that adjustments are likely to be necessary to obtain reasonable results.
+</div>
+
+
+### $\color{#c64329}{\text{Highlights of the Approach}}$
+The primary target audience are actuaries and demographers with statistical and/or quantitative backgrounds, who are interested in new methodology for looking at longevity trends across multiple populations.
+The key features of our approach are:
+
+* A scalable machine learning methodology that simultaneously models multiple longevity surfaces with a joint spatial covariance framework. Specifically, we tap into the GP ecosystem which is a centerpiece of probabilistic data science and in our opinion holds enormous promise for actuarial purposes;
+
+* Explicit information fusion across populations to maximize predictive accuracy;
+
+* A unified, data-driven framework for smoothing historical mortality observations (aka in-sample prediction) and forecasting future longevity scenarios (out-of-sample prediction)
+
+* A fully probabilistic framework that provides stochastic scenarios, probabilistic forecasts, and uncertainty bands, rather than just point projections
+
+* Open source implementation using publicly available packages, specifically within the \code{R} environment
+
+The tutorials are organized into several parts:
+
+  * [Methodology](MOGP_Mortality_Pops_Method.html): contains the overview of the methodology and the notations we are using throughout this repository.
+
+  * [Tutorial I](MOGP_Mortality_Pops_Part1.html): walks through setting up a MOGP Full rank model with several case studies. We explain how to derive the distribution for the improvement rate factors and compare the results with single-output models. 
   
+  * [Tutorial II](MOGP_Mortality_Pops_Part2.html): defines the Intrinsic Coregionalization Model (ICM) for MOGP to make more efficient and scalable models, and to achieve dimension reduction. We also illustrate how MOGP models achieve better performance in out-of-sample prediction and generate the coherence in long-term forecast.
+  
+  * [Tutorial III](MOGP_Mortality_Pops_Part3.html): shows how to set up ICM when data has missing values, or not all outputs are observed given a set of input locations. 
+  
+
+
+
+__Why Multiple Populations?__
+
+Before diving into methodological details, we emphasize that there is an extensive and fast growing literature on stochastic mortality modeling for a single population, and a lot of methods for 2 populations (such as joint modeling of Male/Female longevity). However, few models exist for predictive multi-population longevity analysis beyond two populations. Thus, our motivation is to provide a predictive front-end to the wealth of data in HMD which is an amazing resource that is not fully leveraged by most existing tools.
+
+ It is generally accepted that there is strong commonality in mortality experiences of different populations.
+  Consequently, aggregation of mortality datasets affords better capture of trends and denoising of raw longevity data, improving prediction accuracy. This applies both to the static structure of longevity (in terms of Age and Year) and in its dynamic evolution over time. Data fusion is also important for mitigating model risk, i.e. for fitting the best model within the proposed class. In our approach, this translates into better (hyper)-parameter estimates and less likelihood that the statistical model "goes rogue". In other words, a multi-population model will have higher actuarial credibility. This is especially true for smaller nations with just a few million inhabitants.
+
+Moreover, joint models capture information fusion, which is very valuable since mortality data are released asynchronously. With a joint model one can rely on the newly released data of a related foreign population to update and improve the domestic forecast (see [Tutorial III](MOGP_Mortality_Pops_Part3.html)). Last but not least, joint models are critical for generating forecasts and future scenarios simultaneously across multiple populations. Individual models will tend to be non-coherent, i.e. include scenarios where the joint mortality trends cross-over or diverge in unrealistic ways.
+
+
+
 ### $\color{#c64329}{\text{Data}}$
 
-For the entire tutorials, we work with mortality data from the [Human Mortality Database](https://www.mortality.org) which provides the aggregated mortality statistics at the national levels for more than 40 developed countries across the globe. 
+For all the case studies, we work with mortality data from the [Human Mortality Database](https://www.mortality.org) which provides aggregated mortality statistics at the national level for more than 40 developed countries across the globe. 
 
 ```{r, echo = FALSE, fig.align = "center", fig.width=5, fig.height=3,}
 library(webshot)
 webshot("https://www.mortality.org/", "hmd-zoom.png")
 ```
 
-The HMD applies the same consistent set of procedures on each population and presently focuses on developed economies where death registrations and census data are available and reliable. For our analysis we rely on one-year age groups, concentrating on Ages 50--84 (retirement ages most relevant for predictive actuarial analysis) for both genders and calendar Years 1990--2016. The dataset is organized as a large table. The $n$th observation for the $l$th country contains (i) Age and Year as a pair of independent variables, $(x_{ag}^n,x_{yr}^n)$, and (ii) the logarithm of the observed mortality rate,
+The HMD applies the same consistent set of procedures on each population and presently focuses on developed economies where death registrations and census data are available and reliable. For our analysis we rely on **one-year age groups**, concentrating on Ages 50--84 (retirement ages most relevant for predictive actuarial analysis) for both genders and calendar Years 1990--2016. We note that HMD data is typically delayed for 2-3 years from the present to allow thorough cleaning and double checking of all data.
+
+The dataset is organized as a large table. The $n$th observation for the $l$th country contains (i) Age and Year as a pair of independent variables, $(x_{ag}^n,x_{yr}^n)$, and (ii) the **natural logarithm** of the observed mortality rate,
 $$\begin{equation}
     y^n = \log\bigg[\frac{\text{Death counts at $(x_{ag}^n,x_{yr}^n)$}}{\text{Exposed-to-risk counts at $(x_{ag}^n,x_{yr}^n)$}}\bigg]=\log\bigg[\frac{D^n}{E^n}\bigg].
 \end{equation}$$
-We denote by $\mathcal{D}_l =\{(x^n,y^n)\}_{n=1}^N$ the dataset for the $l$th country.
+For example $(x_{ag},x_{yr},y) = (64,2010,-4.2)$ means that for that population the Age-64 yearly mortality rate in 2010 was $e^{-4.2} = 0.0149956$, i.e. about 1.5\% chance that a 64-year old would not make it to their 65th birthday. 
 
-### $\color{#c64329}{\text{Important notations}}$
-  
-__A Gaussian process (GP)__ is an infinite collection of random variables, any finite number of which follows a multivariate normal (MVN) distribution. As such, a GP  $f \sim GP( m, C)$ is characterized by its mean function $m(x)$ and its covariance structure $C(x,x')$. This means that for any vector $\mathbf{x}=(x^1,\ldots,x^n)$ of $n$ inputs:
-$$f(x^1),\ldots,f(x^n) \sim \mathcal{N}\big(\mathbf{m(x)},\mathbf{C(x,x)}\big)$$
-where $\mathbf{m(x)}=\mathbb{E}[f(\mathbf{x})]$ is the mean vector of size $n$ and $\mathbf{C(x,x)}$ is the $n$ by $n$ covariance matrix, $C(x,x') := \mathbb{E}[(f({x})-{m(x)})(f({x'})-{m(x')})]$.
-
-In a GP regression setup, the latent $f$ links the observations or output vector $\mathbf{y}=(y^1,\ldots,y^n)$ to the input vector $\mathbf{x}$ via:
-$$y^i = f(x^i) + \epsilon^i,$$
-where $\epsilon^i$ is the error term to reflect that we observe only a noisy sample of $f(x^i)$. In our context, $x^i$ are the individual cells in a mortality table (so indexed by Age, Year, etc.), $y^i$ are observed raw log mortality rates, and $f(x^i)$ is the _true_ mortality rate that would materialize in the absence of any random shocks. We assume that observation noise is Gaussian: $\epsilon^i \sim \mathcal{N}(0,\sigma^2)$ or $\epsilon=(\epsilon^1,...,\epsilon^n) \sim \mathcal{N}(\mathbf{0},\mathbf{\Sigma}=\text{diag}(\sigma^2))$. It follows that $\text{Cov}(y^i,y^j) = \text{Cov}(f(x^i),f(x^j)) + \sigma^2\delta(x^i,x^j)$ and therefore $\mathbf{y} \sim \mathcal{N}( \mathbf{m(x)}, \mathbf{C(x,x) + \Sigma})$ where $\delta(x^i,x^j)$ is the Kronecker delta.
-
-`r icon::fa_star(colour = "#059b33", size = 1.5, animate = "spin")` &nbsp;  __Multi-output Gaussian Processes__:
-
-Let $L$ be the number of different populations considered. To jointly model the $L$ different outputs, $\{f_l\}_{1\leq l \leq L}$ we correlate them using the framework of multi-output Gaussian Processes (MOGP) which was introduced in geostatistics under the name of multivariate  kriging or co-kriging. The aim of co-kriging is to estimate the under-sampled variables using spatial correlation with other sampled variables.
-
-The vector-valued latent response over the Age-Year input space is defined as:
-$$\mathbf{f(x)}=(f_1(x^1),\ldots,f_1(x^N),\ldots,f_L(x^1),\ldots,f_L(x^N))=(f_1(\mathbf{x}),\ldots,f_L(\mathbf{x}))$$ where the functions $\{f_l\}_{l=1}^L$ are the log-mortality surface for the corresponding population $l$. Similar to single-output GP (SOGP), MOGP assumes that the vector-valued $\mathbf{f}$ follows a GP:
-$$\mathbf{f} \sim GP(\mathbf{m,C})$$
-where $\mathbf{m} \in \mathbb{R}^{LN \times 1}$ is the mean vector whose elements $\{m_l(\mathbf{x})\}_{l=1}^L$ are the mean functions of each output, and $\mathbf{C} \in \mathbb{R}^{LN \times LN}$ is the fused covariance matrix.
-
-
+We denote by $\mathcal{D}_l =\{(x^n,y^n)\}_{n=1}^N$ the dataset for the $l$th country. In the analysis below we will work with 1 or more populations simultaneously. 
+ 
