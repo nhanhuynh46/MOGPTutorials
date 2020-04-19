@@ -2,8 +2,8 @@
 title: "MOGP for multi-population longevity modeling  \n Part I - A Full Rank Kernel"
 site: rmarkdown::render_site
 author: 
-  - Nhan Huynh, UCSB
   - Mike Ludkovski, UCSB
+  - Nhan Huynh, UCSB
 date: '`r format(Sys.Date(), "%B %d, %Y")`'
 output:
   html_document:
@@ -13,7 +13,7 @@ output:
     toc: yes
     toc_depth: 3
     toc_float: 
-      collapsed: true
+      collapsed: false
       smooth_scroll: true
     number_sections: true
 ---
@@ -31,6 +31,12 @@ output:
 <style type="text/css">
 body{ /* Normal  */
   font-size: 15px;
+  height: 100%;
+  overflow: auto;
+}
+html {
+    overflow: hidden;
+    height: 100%;
 }
 h1.title {
   font-size: 35px;
@@ -71,6 +77,8 @@ library(shiny)
 
 <hr>
 
+This tutorial addresses modeling of mortality across multiple populations using the classical full-rank kernel for factor covariates. We present a case study written in RMarkdown.
+
 # Packages and user-defined functions
 
 Loading all packages into the current working directory:
@@ -84,7 +92,7 @@ library(data.table)
 ```
 
   * [`DiceKriging`](https://cran.r-project.org/web/packages/DiceKriging/DiceKriging.pdf): kriging methods for single-output GP (SOGP).
-  * [`rgenoud`](https://cran.r-project.org/web/packages/rgenoud/rgenoud.pdf): solve genetic optimization (for SOGP).
+  * [`rgenoud`](https://cran.r-project.org/web/packages/rgenoud/rgenoud.pdf): genetic optimization solver used for Maximum Likelihood Estimation of GP hyperparameters.
   * [`kergp`](https://cran.r-project.org/web/packages/kergp/kergp.pdf): kriging methods for user-defined kernel, needed for both Full-rank and ICM Multi-output GP. 
   * [`nloptr`](https://cran.r-project.org/web/packages/nloptr/nloptr.pdf): solve nonlinear optimization using R interface to NLopt.
   * [`data.table`](https://cran.r-project.org/web/packages/data.table/data.table.pdf): extension of `data.frame` to enhance data manipulation. 
@@ -273,8 +281,12 @@ gpFit <- gp(formula = y ~ X$x1 + as.factor(X$x3),
 
 There are several important arguments in $\color{blue}{\texttt{gp()}}$ function:
   
-  * $\color{blue}{\texttt{formula}}$: the left-hand side of ~ is the reponse name and right-hand side is the trend covariates. In our example, the mean function is linear in Age and we further introduce the parameters to estimate the mean difference in log-mortality between a baseline population with other population in the model. The trend can be either known or unknown. 
-  * $\color{blue}{\texttt{data}}$: contains the reponse $y$ and the inputs $X$.
+  * $\color{blue}{\texttt{formula}}$: the left-hand side of ~ is the response name and right-hand side is the trend covariates. Within a multi-population model, we use a linear mean function to take into account the different trends across populations:
+$$\begin{equation}
+    m(x^n)=\beta_0+\beta_1^{ag}x^n_{ag}+\sum_{l=2}^{L}  \beta_{pop,l} x^n_{pop,l}.
+\end{equation}$$
+Analogous to the coefficients of categorical covariates in regression, $\beta_{pop,l}$ can be interpreted as the mean difference between log mortality in population $l$ and the baseline. It also implies the \emph{same} shared  Age structure---mortality rates rising exponentially in $x_{ag}$ with slope $\beta_1^{ag}$ in all populations. Note that the trend can be either known or unknown. 
+  * $\color{blue}{\texttt{data}}$: contains the response $y$ and the inputs $X$.
   * $\color{blue}{\texttt{cov}}$: user-defined covariance kernel. In this case, we define the full-rank kernel through the $\color{blue}{\texttt{covFull()}}$ function with $\color{blue}{\texttt{num_pop = 4}}$. 
   * $\color{blue}{\texttt{estim}}$: logical argument, if $\color{blue}{\texttt{TRUE}}$: the model parameters are estimated by Maximum Likelihood. 
   * $\color{blue}{\texttt{noise}}$: logical argument, if $\color{blue}{\texttt{TRUE}}$: estimate noise in the error term. 
@@ -286,8 +298,6 @@ The summary output of the fitted model shows the parameters in the mean and cova
 summary(gpFit)
 ```
 
-We use a linear mean function to take into account the different trends across populations:
-$$m(x^n)=\beta_0+\beta_1^{ag}x^n_{ag}+\sum_{l=2}^L\beta_{pop,l}x^n_{pop,l}$$
 The mean function can be extracted from the model output:
 
 ```{r, meanfunction}
@@ -302,7 +312,7 @@ df_html <- knitr::kable(beta, "html")
 kableExtra::kable_styling(df_html,bootstrap_options = "striped", full_width = F)
 ```
 
-Analogous to the coefficients of categorical covarites in regression, $\beta_{pop,l}$ is the mean difference between log-mortality in population $l$ and the baseline. In this case, Denmark is chosen to be the baseline. Across all four populations, the common linear trend in Age is approximately 0.1.
+Denmark is chosen to be the baseline in the mean function. Across all four populations, the common linear trend in Age is approximately 0.1, meaning that mortality rate increases by 10% for each additional year of Age.
 
 The covariance $\Gamma_{l_1,l_2}$ is driven by the hyperparameters $\theta_{l_1,l_2}$: large value of $\theta_{l_1,l_2}$ implies low correlation $r_{l_1,l_2}:=\exp{(-\theta_{l_1,l_2})}$ between the two populations. We first extract the hyperparameters $\theta_{l_1,l_2}$s' and then compute the cross-correlation:
 
@@ -321,10 +331,6 @@ kableExtra::kable_styling(df_html,bootstrap_options = "striped", full_width = F)
 
 ## Mortality improvement factors
 
-__Mortality Improvement Factors__: measures longevity changes year-over-year. In terms of the observations, the raw annual percentage mortality improvement is: 
-$1-\dfrac{\exp{\big(y(x_{ag};x_{yr})\big)}}{\exp{\big(y(x_{ag};x_{yr}-1)\big)}}$. 
-The smoothed improvement factor is obtained by replacing $y$'s by the GP model posterior $m_*$'s:
-$$\partial m_{back}^{GP}(x):=1-\dfrac{\exp{\big(m_*(x_{ag};x_{yr})\big)}}{\exp{\big(m_*(x_{ag};x_{yr}-1)\big)}}$$
 In this section, we will illustrate how to derive the distribution of the backward-looking annual improvements for Ages 70--84 in 2016:
 $$MI_{back}^{obs}(x_{ag};2016)=1-\dfrac{\exp{\big(y(x_{ag};2016)\big)}}{\exp{\big(y(x_{ag};2015)\big)}}=1-\exp{\big(y(x_{ag};2016)-y(x_{ag};2015)\big)}$$
 with $y(x_{ag},2016)$ and $y(x_{ag},2015)$ the raw log-mortality rate for $(x_{ag},2016)$ and $(x_{ag},2015)$.
@@ -442,7 +448,7 @@ predictedMortDiffFull$lower <- 1-exp(predictedlogMortDiff$upper)
 # polygon(c(agesForecast,rev(agesForecast)),c(predictedMortDiffFull$upper,rev(predictedMortDiffFull$lower)),col=col_tran,border=NA)
 ```
 
-# Single-population gaussian process (SOGP)
+# Single-population Gaussian process (SOGP)
 
 <div class="alert alert-success">
 Multi-output GP is the generalized framework based on Single-population Gaussian Process study, written by [Michael Ludkovski](http://ludkovski.faculty.pstat.ucsb.edu/), [Jimmy Risk](http://jrisk.pstat.ucsb.edu/), and [Howard Zail](https://www.elucidor.com/howard-zail/). The paper can be found [here](https://www.cambridge.org/core/journals/astin-bulletin-journal-of-the-iaa/article/gaussian-process-models-for-mortality-rates-and-improvement-factors/A2D48AFF8E32CEABF9B9DB899194D9C2) with an R notebook publicly available at: https://github.com/jimmyrisk/GPmortalityNotebook.
@@ -521,7 +527,7 @@ predictedMortDiff$lower <- 1-exp(predictedlogMortDiff$upper)
 ```
 
 We are now ready to visualize the year-over-year smoothed improvement rate factors for Ages 70--84 in 2016 via two different models: the full-rank MOGP and the SOGP model for Swedish Males, see interactive figure below.
-<p>&nbsp; 
+<p></p>&nbsp; 
 
 ```{r, visualization_Swe_improvement, echo=FALSE}
 col_tran1 = adjustcolor("#E67E07",alpha.f =0.35)
@@ -577,9 +583,10 @@ fig <- fig %>% layout(xaxis = list(title = 'Age',
 div(ggplotly(fig) %>% config(displayModeBar = F),
     align = "center")
 ``` 
-<p>&nbsp; 
-<p>&nbsp; 
+<p></p>&nbsp; 
+<p></p>
 
 The large lengthscale in Age ($\theta_{ag}$) in SOGP model lead to essentially linear improvement rate factors (blue curves). In the four-population model (orange curves), the Age lengthscale decreases, so the improvement rate factors become more Age-dependent. 
 
-<hr>
+<p></p>&nbsp; 
+<p></p>
