@@ -3,6 +3,9 @@ navbar:
   title: '<div><img src="gp.png"></img>  Multi-output Gaussian Processes</div>'
   type: inverse
   left:
+    - text: "Methodology"
+      text-align: center
+      href: MOGP_Mortality_Pops_Method.html
     - text: "Full-rank Kernel"
       text-align: center
       href: MOGP_Mortality_Pops_Part1.html
@@ -16,7 +19,7 @@ navbar:
     - icon: fa-podcast fa-lg
       href: https://www.stitcher.com/podcast/society-of-actuaries-podcasts/e/65557683?autoplay=true
     - icon: ion-social-github fa-lg
-      href: https://github.com/nhanhuynh46
+      href: https://github.com/nhanhuynh46/MOGPTutorials
     - icon: fa-chart-bar fa-lg
       href: https://rosalia1010.shinyapps.io/ShinyApp/
 
