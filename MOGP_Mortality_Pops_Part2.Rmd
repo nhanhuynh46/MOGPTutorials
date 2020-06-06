@@ -2,8 +2,8 @@
 title: "MOGP for multi-population longevity modeling  \n Part II - Intrinsic Coregionalization Model"
 site: rmarkdown::render_site
 author: 
-  - Nhan Huynh, UCSB
   - Mike Ludkovski, UCSB
+  - Nhan Huynh, UCSB
 date: '`r format(Sys.Date(), "%B %d, %Y")`'
 output:
   html_document:
@@ -11,15 +11,11 @@ output:
     theme: united
     highlight: zenburn
     toc: yes
-    toc_depth: 4
+    toc_depth: 3
     toc_float: 
-      collapsed: true
+      collapsed: false
       smooth_scroll: true
     number_sections: true
-  # pdf_document: 
-  #   df_print: kable
-  #   highlight: zenburn
-  #   extra_dependencies: ["xcolor"]
 ---
 <style>
   .col2 {
@@ -35,6 +31,12 @@ output:
 <style type="text/css">
 body{ /* Normal  */
   font-size: 15px;
+  height: 100%;
+  overflow: auto;
+}
+html {
+    overflow: hidden;
+    height: 100%;
 }
 h1.title {
   font-size: 35px;
@@ -74,7 +76,7 @@ library(shiny)
 
 <hr>
 
-In [Part I](MOGP_Mortality_Pops_Part1.html), we have discussed a full-rank kernel for MOGP model. However, estimating the cross-covariance kernel requires $L(L-1)/2$ parameters $\theta_{l_1,l_2}, 1 \leq l_1 \leq l_2 \leq L$ which imposes challenges in both statistical and computational aspects when modelling MOGP with many outputs (e.g. $L \geq 4$). In this section, we will discuss an attractive dimension reduction approach, the intrinsic coregionalization model (ICM), to keep the number of correlation parameters low. 
+In [Tutorial I](MOGP_Mortality_Pops_Part1.html), we have discussed a full-rank kernel for MOGP model. However, estimating the cross-covariance kernel requires $L(L-1)/2$ parameters $\theta_{l_1,l_2}, 1 \leq l_1 \leq l_2 \leq L$ which imposes challenges in both statistical and computational aspects when modelling MOGP with many outputs (e.g. $L \geq 4$). In this section, we will discuss an attractive dimension reduction approach, the intrinsic coregionalization model (ICM), to keep the number of correlation parameters low. 
 
 # Packages and user-defined functions
 
@@ -89,7 +91,7 @@ library(data.table)
 ```
 
   * [`DiceKriging`](https://cran.r-project.org/web/packages/DiceKriging/DiceKriging.pdf): kriging methods for single-output GP (SOGP).
-  * [`rgenoud`](https://cran.r-project.org/web/packages/rgenoud/rgenoud.pdf): solve genetic optimization (for SOGP).
+  * [`rgenoud`](https://cran.r-project.org/web/packages/rgenoud/rgenoud.pdf): genetic optimization solver used for Maximum Likelihood Estimation of GP hyperparameters.
   * [`kergp`](https://cran.r-project.org/web/packages/kergp/kergp.pdf): kriging methods for user-defined kernel, needed for both Full-rank and ICM Multi-output GP. 
   * [`nloptr`](https://cran.r-project.org/web/packages/nloptr/nloptr.pdf): solve nonlinear optimization using R interface to NLopt.
   * [`data.table`](https://cran.r-project.org/web/packages/data.table/data.table.pdf): extension of `data.frame` to enhance data manipulation. 
@@ -121,67 +123,17 @@ source("gp_prediction.R")
       * <img src="https://www.countryflags.io/CH/shiny/24.png"> Switzerland 
       * <img src="https://www.countryflags.io/GB/shiny/24.png"> UK  
   </div>  
-  Illustration on the historical evolution of the log- mortality rates for Age 80 from 1984--2016 in 16 European countries, separated by Males (left figure) and Females (right figure). We observe that: Female populations have lower mortality rates than Male groups and within each gender, Western European countries have lower mortality trends than Eastern European countries.  
-   
-<div class="col2">   
-```{r, cache = TRUE, echo = FALSE, amimatePlot1}
-# for pdf output, un-comment this section
-library(ggplot2)
-library(gganimate)
+  <!-- Illustration on the historical evolution of the log- mortality rates for Age 80 from 1984--2016 in 16 European countries, separated by Males (left figure) and Females (right figure). We observed that Female populations have lower mortality rates than Male groups.  -->
 
-# Males:
-mortData = createMortData(year_start=1984,year_end=2016,age_start=80,age_end=80,sex="m",sex_cat="no")
-theme_set(theme_bw(base_size = 14))
-
-m <- ggplot(mortData,aes(year, y, group = country, color = country)) +
-  geom_line(size=0.75) +
-  ylim(-3.60, -1.85) + 
-  labs(x = "Years", y = "Log-mortality", caption = "(Based on data from HMD)") +
-  scale_x_continuous(breaks=seq(1984, 2016, 4)) +
-  theme(legend.position = "right") +
-  ggtitle("Age 80 - Males") + geom_point(size=2) + transition_reveal(year) +
-  scale_color_manual(values = c("antiquewhite2","aquamarine4","blue1","plum1",
-  "red","burlywood3","cadetblue1","#C3D7A4",
-  "cornflowerblue","#FFDB6D","darkorchid2","deeppink",
-  "dimgrey","green","darkorange","black")) +
-  theme(axis.line = element_line(colour = "black"),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    panel.border = element_blank(),
-    panel.background = element_blank()) 
-animate(m, width = 450, height = 450)
-anim_save("amimatePlot1.gif")
-```
-
-```{r, cache = TRUE, echo = FALSE, amimatePlot2}
-# for pdf output, un-comment this section
-library(ggplot2)
-library(gganimate)
-
-# Females:
-mortData = createMortData(year_start=1984,year_end=2016,age_start=80,age_end=80,sex="f",sex_cat="no")
-theme_set(theme_bw(base_size = 14))
-
-f <- ggplot(mortData,aes(year, y, group = country, color = country)) +
-  geom_line(size=0.75, linetype = "twodash") +
-  ylim(-3.60, -1.85) + 
-  labs(x = "Years", y = "Log-mortality", caption = "(Based on data from HMD)") +
-  scale_x_continuous(breaks=seq(1984, 2016, 4)) +
-  theme(legend.position = "right") +
-  ggtitle("Age 80 - Females") + geom_point(size=2) + transition_reveal(year) +
-  scale_color_manual(values = c("antiquewhite2","aquamarine4","blue1","plum1",
-  "red","burlywood3","cadetblue1","#C3D7A4",
-  "cornflowerblue","#FFDB6D","darkorchid2","deeppink",
-  "dimgrey","green","darkorange","black")) + 
-  theme(axis.line = element_line(colour = "black"),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    panel.border = element_blank(),
-    panel.background = element_blank()) 
-animate(f, width = 450, height = 450)
-anim_save("amimatePlot2.gif")
-```
-</div>
+<!-- <div class="col2">    -->
+<!--   <div> -->
+<!--   <img src="amimatePlot1.gif" width="450" height="400"/> -->
+<!--   </div> -->
+<!--   <div> -->
+<!--   <img src="amimatePlot2.gif" width="450" height="400"> -->
+<!--   </div> -->
+<!-- </div> -->
+<!-- <p>&nbsp;  -->
   
   * $\color{blue}{\texttt{covICM.R}}$: to define the ICM Kernel with pre-specified number of populations and choice of rank. Users can directly modify this script according to their own analyses (E.g: provide different covariance kernel over Age-Year inputs, adjust the lower and upper bounds of the hyperparameters, re-name the hyperparameters, etc.). In ICM, each output $f_l$ is assumed be a linear combination of independent latent GPs. Let $u_1(\mathbf{x}),\ldots,u_Q(\mathbf{x})$ be independent latent functions each from a GP prior with covariance kernel $C^{(u)}(\mathbf{x,x'})$. The modeled outputs $f_l$  are linear combinations of these $Q$ latent factors:
 $$\begin{equation}
@@ -355,9 +307,7 @@ df_html <- knitr::kable(predicted[c(1,2,46,47),], "html")
 kable_styling(df_html,bootstrap_options = "striped", full_width = F)
 ```
 
-To assess model performance, we can compute the symmetric mean absolute percentage error:
-$$SMAPE:=\dfrac{100}{M}\sum_{i=1}^M\dfrac{|y_*^i-m_*(x_*^i)|}{(|y_*^i|+|m_*(x_*^i)|)/2}$$
-where $y_*^i$ is the observed value at test input $x_*^i$, $m_*(x_*^i)$ is the predicted log-mortality rate by the model, and $M$ is the number of inputs in the test set. 
+To assess model performance, we can compute the symmetric mean absolute percentage error (SMAPE):
 
 ```{r, performanceExample1}
 # data with observed values:
@@ -1418,7 +1368,9 @@ div(ggplotly(fig) %>% config(displayModeBar = F),
     align = "center")
 ```
 <p>&nbsp; 
-<p>&nbsp; 
+<p>
+
 The choice of mean function $m(.)$ has minimal impact on in-sample forecasts that are largely driven by the training data covering 1990--2016. In contrast, the long-term levels of mortality improvement are completely driven by $m(.)$. When visualizing the forecasts for all cases, we see a strong coherence so that mortality rates across populations all move roughly in unison over time, matching our intuition about the persistent commonality of their future mortality experiences. 
 
-<hr>
+<p>&nbsp; 
+<p>
