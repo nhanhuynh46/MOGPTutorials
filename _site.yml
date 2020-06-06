@@ -15,6 +15,9 @@ navbar:
     - text: "Notched Data"
       text-align: center
       href: MOGP_Mortality_Pops_Part3.html
+    - text: "Covid 19"
+      text-align: center
+      href: SOGP_Covid19.html
   right:
     - icon: fa-podcast fa-lg
       href: https://www.stitcher.com/podcast/society-of-actuaries-podcasts/e/65557683?autoplay=true
