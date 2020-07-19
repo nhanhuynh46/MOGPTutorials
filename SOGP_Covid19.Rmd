@@ -82,7 +82,7 @@ library(rgenoud)
 
 <hr>
 
-The analysis below applies the SOGP framework to investigate **Covid-19** excess deaths. To do so we utilize the recently published **short-term mortality fluctuation** (STMF) dataset published by the Human Mortality Database. The STMF was expressly created to accomodate the critical need of short-term mortality analyses in response to the Covid-19 pandamic. The STMF contains detailed country-specific mortality, segregated by week (52 weeks per year), sex, and 3 age groups in 24 countries:
+The analysis below applies the SOGP framework to investigate **Covid-19** excess deaths. To do so we utilize the recently published **short-term mortality fluctuation** (STMF) dataset published by the Human Mortality Database. The STMF was expressly created to accomodate the critical need of short-term mortality analyses in response to the Covid-19 pandamic. The STMF contains detailed country-specific mortality, segregated by week (52 weeks per year), sex, and 3 age groups in 25 countries:
 
 <div class="col2">
   <img src="https://www.countryflags.io/AT/shiny/24.png"> Austria (AUT) \
@@ -100,6 +100,7 @@ The analysis below applies the SOGP framework to investigate **Covid-19** excess
   <img src="https://www.countryflags.io/GB/shiny/24.png"> Scotland (GBR_SCO) \
   <img src="https://www.countryflags.io/HU/shiny/24.png"> Hungary (HUN) \
   <img src="https://www.countryflags.io/IS/shiny/24.png"> Iceland (ISL) \
+  <img src="https://www.countryflags.io/IL/shiny/24.png"> Israel (ISL) \
   <img src="https://www.countryflags.io/IT/shiny/24.png"> Italy (ITA) \
   <img src="https://www.countryflags.io/LT/shiny/24.png"> Lithuania (LTU) \
   <img src="https://www.countryflags.io/LU/shiny/24.png"> Luxembourg (LUX) \
@@ -112,7 +113,7 @@ The analysis below applies the SOGP framework to investigate **Covid-19** excess
 </div>  
 <p></p>
 
-The dataset is frequently updated. The analysis below is based on datasets last updated on **July 1, 2020**: 
+The dataset is frequently updated. The analysis below is based on datasets last updated on **July 7, 2020**: 
 
 ```{r, covid19Data}
 deaths <- readr::read_csv("https://www.mortality.org/Public/STMF/Outputs/stmf.csv", skip=1)
@@ -124,7 +125,7 @@ For our analysis we work with mortality rates (provided in STMF as the *RTotal* 
 
 * We ignore Week 22 and 35 in England & Wales due to a persistent dip in reported deaths during those weeks due to national holidays.
 
-* We drop the very last reported week of 2020 for CHE, FIN, HUN, LTU, NOR, ESP, SVK, SWE and USA which have steep declines due to incomplete reporting.
+* We drop the very last reported week of 2020 for CHE, FIN, LTU, NOR, ESP, ISR, SVK, and USA which have steep declines due to incomplete reporting.
 
 * We drop Iceland and Luxembourg which have different seasonality and much more noisy data due to very small population (more than 4 times smaller than all other countries considered)
 
@@ -142,10 +143,11 @@ deaths <- deaths[,y:=log(RTotal)]
 deaths = deaths[!CountryCode %in% c("ISL","LUX")]
 # remove the last week data point in 2020 for several countries Week %in% 21:25
 deaths = deaths[-which(CountryCode=="SVK" & Year==2020 & Week == 18)]
-deaths = deaths[-which(CountryCode=="HUN" & Year==2020 & Week %in% 21:22)]
-deaths = deaths[-which(CountryCode=="CHE" & Year==2020 & Week %in% 22:23)]
-deaths = deaths[-which(CountryCode %in% c("USA","SWE","FIN","LTU") & Year==2020 & Week == 24)]
-deaths = deaths[-which(CountryCode %in% c("ESP","NOR") & Year==2020 & Week %in% 23:25)]
+deaths = deaths[-which(CountryCode=="LTU" & Year==2020 & Week == 24)]
+deaths = deaths[-which(CountryCode=="ISR" & Year==2020 & Week == 22)]
+deaths = deaths[-which(CountryCode %in% c("ESP","USA") & Year==2020 & Week %in% 24:25)]
+deaths = deaths[-which(CountryCode == "NOR" & Year==2020 & Week == 26)]
+deaths = deaths[-which(CountryCode %in% c("CHE","FIN") & Year==2020 & Week==25)]
 ```
 
 $\color{#c64329}{\textbf{Gaussian Process Regression in estimating 2020 excess deaths}}$
@@ -486,7 +488,7 @@ for (i in 1:length(countryUnq)){
                                      showgrid = F, 
                                      showline = TRUE, 
                                      ticks = "outside",
-                                     range = c(1,27)),
+                                     range = c(1,29)),
                         yaxis = list(title = 'Log-Mortality Rate', 
                                      titlefont = axesF, 
                                      showgrid = F, 
@@ -543,7 +545,7 @@ for (i in 1:length(countryUnq)){
                                      showgrid = F, 
                                      showline = TRUE, 
                                      ticks = "outside",
-                                     range = c(1,27)),
+                                     range = c(1,29)),
                         yaxis = list(title = 'Log-Mortality Rate', 
                                      titlefont = axesF, 
                                      showgrid = F, 
@@ -616,7 +618,8 @@ browsable(div(style = "display: flex;  justify-content: center; height: calc(50v
 
 ```{r, echo = FALSE}
 browsable(div(style = "display: flex;  justify-content: center; height: calc(50vh - 50px); gap: 40px",
-        div(ggplotly(P[[22]]) %>% config(displayModeBar = F))))
+        div(ggplotly(P[[22]]) %>% config(displayModeBar = F)),
+        div(ggplotly(P[[23]]) %>% config(displayModeBar = F))))
 ```
 
 $\color{#c64329}{\textbf{Credible Bands}}$
@@ -677,7 +680,7 @@ for (i in 1:length(countryUnq)){
                            mode = "lines",
                            name = "Predicted value",
                            line = list(color = "steelblue", width = 3))
-   fig <- fig %>% add_lines(x = 1:22, y = med5Yr$med[1:22],
+   fig <- fig %>% add_lines(x = 1:26, y = med5Yr$med[1:26],
                            mode = "lines",
                            showlegend = FALSE,
                            hovertemplate = paste(
@@ -738,7 +741,7 @@ for (i in 1:length(countryUnq)){
                                      showgrid = F, 
                                      showline = TRUE, 
                                      ticks = "outside",
-                                     range = c(1,25)),
+                                     range = c(1,27)),
                         yaxis = list(title = 'Log-Mortality Rate', 
                                      titlefont = axesF, 
                                      showgrid = F, 
@@ -816,7 +819,8 @@ browsable(div(style = "display: flex;  justify-content: center; height: calc(55v
 
 ```{r, echo = FALSE}
 browsable(div(style = "display: flex;  justify-content: center; height: calc(55vh - 55px); gap: 40px",
-        div(ggplotly(P[[22]]) %>% config(displayModeBar = F))))
+        div(ggplotly(P[[22]]) %>% config(displayModeBar = F)),
+        div(ggplotly(P[[23]]) %>% config(displayModeBar = F))))
 ```
 
 <p></p>&nbsp; 
@@ -840,7 +844,7 @@ $\color{#c64329}{\textbf{Excess deaths}}$
 excess = c()
 for (i in 1:length(countryUnq)){
   yearsForecast = 2020
-  weeksForecast  = 1:25
+  weeksForecast  = 1:26
   nYr = length(yearsForecast)
   nWk = length(weeksForecast)
 
@@ -863,9 +867,7 @@ for (i in 1:length(countryUnq)){
   excess = rbind(excess,xPred[,.(CountryCode,week,excess)])
 }
 excess$CountryCode = as.factor(excess$CountryCode)
-levels(excess$CountryCode) = c("Austria","Belgium","Bulgaria","Switzerland","Czech Republic","Germany","Denmark",
-                               "Spain","Estonia", "Finland","France","Scotland","England & Wales",
-                               "Hungary","Italy","Lithuania","Netherlands","Norway",
+levels(excess$CountryCode) = c("Austria","Belgium","Bulgaria","Switzerland","Czech Republic","Germany","Denmark","Spain","Estonia", "Finland","France","Scotland","England & Wales","Hungary","Israel","Italy","Lithuania","Netherlands","Norway",
                                "Portugal","Slovakia", "Sweden","USA")
 ```
 
