@@ -113,7 +113,7 @@ The analysis below applies the SOGP framework to investigate **Covid-19** excess
 </div>  
 <p></p>
 
-The dataset is frequently updated. The analysis below is based on datasets last updated on **July 7, 2020**: 
+The dataset is frequently updated. The analysis below is based on datasets last updated on **July 22, 2020**: 
 
 ```{r, covid19Data}
 deaths <- readr::read_csv("https://www.mortality.org/Public/STMF/Outputs/stmf.csv", skip=1)
@@ -125,7 +125,7 @@ For our analysis we work with mortality rates (provided in STMF as the *RTotal* 
 
 * We ignore Week 22 and 35 in England & Wales due to a persistent dip in reported deaths during those weeks due to national holidays.
 
-* We drop the very last reported week of 2020 for CHE, FIN, LTU, NOR, ESP, ISR, SVK, and USA which have steep declines due to incomplete reporting.
+* We drop the very last reported week of 2020 for CHE, FIN, LTU, NOR, ISR, SVK, and USA which have steep declines due to incomplete reporting.
 
 * We drop Iceland and Luxembourg which have different seasonality and much more noisy data due to very small population (more than 4 times smaller than all other countries considered)
 
@@ -145,9 +145,10 @@ deaths = deaths[!CountryCode %in% c("ISL","LUX")]
 deaths = deaths[-which(CountryCode=="SVK" & Year==2020 & Week == 18)]
 deaths = deaths[-which(CountryCode=="LTU" & Year==2020 & Week == 24)]
 deaths = deaths[-which(CountryCode=="ISR" & Year==2020 & Week == 22)]
-deaths = deaths[-which(CountryCode %in% c("ESP","USA") & Year==2020 & Week %in% 24:25)]
-deaths = deaths[-which(CountryCode == "NOR" & Year==2020 & Week == 26)]
-deaths = deaths[-which(CountryCode %in% c("CHE","FIN") & Year==2020 & Week==25)]
+deaths = deaths[-which(CountryCode == "USA" & Year==2020 & Week %in% 26:27)]
+deaths = deaths[-which(CountryCode == "NOR" & Year==2020 & Week %in% 26:28)]
+deaths = deaths[-which(CountryCode == "FIN" & Year==2020 & Week==27)]
+deaths = deaths[-which(CountryCode == "CHE" & Year==2020 & Week %in% 26:27)]
 ```
 
 $\color{#c64329}{\textbf{Gaussian Process Regression in estimating 2020 excess deaths}}$
@@ -488,7 +489,7 @@ for (i in 1:length(countryUnq)){
                                      showgrid = F, 
                                      showline = TRUE, 
                                      ticks = "outside",
-                                     range = c(1,29)),
+                                     range = c(1,30)),
                         yaxis = list(title = 'Log-Mortality Rate', 
                                      titlefont = axesF, 
                                      showgrid = F, 
@@ -545,7 +546,7 @@ for (i in 1:length(countryUnq)){
                                      showgrid = F, 
                                      showline = TRUE, 
                                      ticks = "outside",
-                                     range = c(1,29)),
+                                     range = c(1,30)),
                         yaxis = list(title = 'Log-Mortality Rate', 
                                      titlefont = axesF, 
                                      showgrid = F, 
@@ -633,7 +634,7 @@ To highlight the uncertainty quantification available with a GP model, we plot b
 P = list()
 for (i in 1:length(countryUnq)){
   yearsForecast = 2020
-  weeksForecast  = 1:26
+  weeksForecast  = 1:27
   nYr = length(yearsForecast)
   nWk = length(weeksForecast)
   
@@ -844,7 +845,7 @@ $\color{#c64329}{\textbf{Excess deaths}}$
 excess = c()
 for (i in 1:length(countryUnq)){
   yearsForecast = 2020
-  weeksForecast  = 1:26
+  weeksForecast  = 1:27
   nYr = length(yearsForecast)
   nWk = length(weeksForecast)
 
@@ -883,8 +884,6 @@ df_html <- knitr::kable(excessSum, "html")
 kableExtra::kable_styling(df_html,bootstrap_options = "striped", full_width = F)  
 
 ```
-
-
 
 $\color{#c64329}{\textbf{GP Diagnostics}}$
 
