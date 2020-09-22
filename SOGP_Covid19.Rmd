@@ -120,7 +120,7 @@ The analysis below applies the SOGP framework to investigate **Covid-19** excess
 </div>  
 <p></p>
 
-The dataset is frequently updated. The analysis below is based on datasets last updated on **September 09, 2020**: 
+The dataset is frequently updated. The analysis below is based on datasets last updated on **September 17, 2020**: 
 
 ```{r, covid19Data}
 deaths <- readr::read_csv("https://www.mortality.org/Public/STMF/Outputs/stmf.csv", skip=1)
