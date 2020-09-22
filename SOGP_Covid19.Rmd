@@ -82,7 +82,7 @@ library(rgenoud)
 
 <hr>
 
-The analysis below applies the SOGP framework to investigate **Covid-19** excess deaths. To do so we utilize the recently published **short-term mortality fluctuation** (STMF) dataset published by the Human Mortality Database. The STMF was expressly created to accomodate the critical need of short-term mortality analyses in response to the Covid-19 pandamic. The STMF contains detailed country-specific mortality, segregated by week (52 weeks per year), sex, and 3 age groups in 28 countries:
+The analysis below applies the SOGP framework to investigate **Covid-19** excess deaths. To do so we utilize the recently published **short-term mortality fluctuation** (STMF) dataset published by the Human Mortality Database. The STMF was expressly created to accomodate the critical need of short-term mortality analyses in response to the Covid-19 pandamic. The STMF contains detailed country-specific mortality, segregated by week (52 weeks per year), sex, and 3 age groups in 32 countries:
 
 <div class="col2">
   <img src="https://www.countryflags.io/AT/shiny/24.png"> Austria (AUT) \
@@ -97,10 +97,13 @@ The analysis below applies the SOGP framework to investigate **Covid-19** excess
   <img src="https://www.countryflags.io/FI/shiny/24.png"> Finland (FIN) \
   <img src="https://www.countryflags.io/FR/shiny/24.png"> France (FRATNP) \
   <img src="https://www.countryflags.io/GB/shiny/24.png"> England and Wales (GBRTENW) \
+  <img src="https://www.countryflags.io/IE/shiny/24.png"> Northern Ireland (GBR_NIR)\
   <img src="https://www.countryflags.io/GB/shiny/24.png"> Scotland (GBR_SCO) \
+  <img src="https://www.countryflags.io/GR/shiny/24.png"> Greece (GRC) \
+  <img src="https://www.countryflags.io/HR/shiny/24.png"> Croatia (HRV) \
   <img src="https://www.countryflags.io/HU/shiny/24.png"> Hungary (HUN) \
   <img src="https://www.countryflags.io/IS/shiny/24.png"> Iceland (ISL) \
-  <img src="https://www.countryflags.io/IL/shiny/24.png"> Israel (ISL) \
+  <img src="https://www.countryflags.io/IL/shiny/24.png"> Israel (ISR) \
   <img src="https://www.countryflags.io/IT/shiny/24.png"> Italy (ITA) \
   <img src="https://www.countryflags.io/LT/shiny/24.png"> Lithuania (LTU) \
   <img src="https://www.countryflags.io/LU/shiny/24.png"> Luxembourg (LUX) \
@@ -109,14 +112,15 @@ The analysis below applies the SOGP framework to investigate **Covid-19** excess
   <img src="https://www.countryflags.io/NO/shiny/24.png"> Norway (NOR) \
   <img src="https://www.countryflags.io/PL/shiny/24.png"> Poland (POL) \
   <img src="https://www.countryflags.io/PT/shiny/24.png"> Portugal (PRT)\
+  <img src="https://www.countryflags.io/RU/shiny/24.png"> Russia (RUS)\
   <img src="https://www.countryflags.io/SK/shiny/24.png"> Slovakia (SVK)\
-  <img src="https://www.countryflags.io/SI/shiny/24.png"> Slovenia (SVN) \
+  <img src="https://www.countryflags.io/SI/shiny/24.png"> Slovenia (SVN)\
   <img src="https://www.countryflags.io/SE/shiny/24.png"> Sweden (SWE) \
   <img src="https://www.countryflags.io/US/shiny/24.png"> United States (USA) \
 </div>  
 <p></p>
 
-The dataset is frequently updated. The analysis below is based on datasets last updated on **August 05, 2020**: 
+The dataset is frequently updated. The analysis below is based on datasets last updated on **September 09, 2020**: 
 
 ```{r, covid19Data}
 deaths <- readr::read_csv("https://www.mortality.org/Public/STMF/Outputs/stmf.csv", skip=1)
@@ -128,9 +132,11 @@ For our analysis we work with mortality rates (provided in STMF as the *RTotal* 
 
 * We ignore Week 22 and 35 in England & Wales due to a persistent dip in reported deaths during those weeks due to national holidays.
 
-* We drop the very last reported week of 2020 for CHE, FIN, LTU, NOR, ISR, SVK, SWE and USA which have steep declines due to incomplete reporting.
+* We drop the very last reported week of 2020 for CHE, FIN, NOR, SWE, and USA which have steep declines due to incomplete reporting.
 
-* We drop Iceland and Luxembourg which have different seasonality and much more noisy data due to very small population (more than 4 times smaller than all other countries considered)
+* We drop Iceland and Luxembourg which have different seasonality and much more noisy data due to very small population (more than 4 times smaller than all other countries considered).
+
+* We drop Russia which has limited data available as the most recent data is only up to 2018. 
 
 * For purposes of illustration, we work with all-age, all-gender mortality
 
@@ -143,16 +149,13 @@ deaths <- deaths[,y:=log(RTotal)]
 
 
 ```{r, removeLastWeek, echo = FALSE}
-deaths = deaths[!CountryCode %in% c("ISL","LUX")]
-# remove the last week data point in 2020 for several countries Week %in% 21:25
-deaths = deaths[-which(CountryCode=="SVK" & Year==2020 & Week %in% 25:26)]
-deaths = deaths[-which(CountryCode=="LTU" & Year==2020 & Week == 24)]
-deaths = deaths[-which(CountryCode=="ISR" & Year==2020 & Week == 28)]
-deaths = deaths[-which(CountryCode == "USA" & Year==2020 & Week == 29)]
-deaths = deaths[-which(CountryCode=="SWE" & Year==2020 & Week == 30)]
-deaths = deaths[-which(CountryCode == "NOR" & Year==2020 & Week %in% 29:30)]
-deaths = deaths[-which(CountryCode == "FIN" & Year==2020 & Week==29)]
-deaths = deaths[-which(CountryCode == "CHE" & Year==2020 & Week %in% 27:28)]
+deaths = deaths[!CountryCode %in% c("ISL","LUX","RUS")]
+# remove the last week data point in 2020 for several countries Week %in% 34:36
+deaths = deaths[-which(CountryCode == "CHE" & Year==2020 & Week %in% 34:35)]
+deaths = deaths[-which(CountryCode == "FIN" & Year==2020 & Week== 35)]
+deaths = deaths[-which(CountryCode == "NOR" & Year==2020 & Week %in% 35:36)]
+deaths = deaths[-which(CountryCode=="SWE" & Year==2020 & Week == 36)]
+deaths = deaths[-which(CountryCode == "USA" & Year==2020 & Week == 34)]
 ```
 
 $\color{#c64329}{\textbf{Gaussian Process Regression in estimating 2020 excess deaths}}$
@@ -229,7 +232,7 @@ Our goal is to use a Gaussian Process model to:
 
 (1) smooth log-mortality rates in Year and Week dimensions; 
 
-(2) perform out-of-sample predictions in 2020 starting from Week 5 to Week 30 (end of July 2020). 
+(2) perform out-of-sample predictions in 2020 starting from Week 5 to Week 37 (middle of September 2020). 
 
 ```{r, echo = FALSE, fig.show = "hold", out.width = "50%", fig.align = "default"}
 knitr::include_graphics("Sweden-Raw-covid19.png")
@@ -249,7 +252,7 @@ mortSingle_nug = list()
 nug = list()
 mortSingle = list()
 
-for (i in which(countryUnq != "GBRTENW")){
+for (i in which(!countryUnq %in% c("GBRTENW"))){
   xMort = data.frame(year = mortData$Year[mortData$CountryCode==countryUnq[i]], 
                      week = mortData$Week[mortData$CountryCode==countryUnq[i]])
   yMort = mortData$y[mortData$CountryCode==countryUnq[i]]
@@ -280,12 +283,12 @@ for (i in which(countryUnq != "GBRTENW")){
 ```{r, echo = FALSE, include = FALSE, cache = TRUE}
 # pre-specify lengthscales in England and Wales:
 lengthscales = c()
-for (i in which(!countryUnq %in% c("GBRTENW"))){
+for (i in which(!countryUnq %in% c("GBRTENW","GBR_NIR"))){
   lengthscales = rbind(lengthscales,mortSingle_nug[[i]]@covariance@range.val)
 }
 
+# fix lengthscale in Year and Week for England and Wales
 i = which(countryUnq=="GBRTENW")
-
 xMort = data.frame(year = mortData$Year[mortData$CountryCode==countryUnq[i]], 
                      week = mortData$Week[mortData$CountryCode==countryUnq[i]])
 yMort = mortData$y[mortData$CountryCode==countryUnq[i]]
@@ -295,19 +298,29 @@ mortSingle_nug[[i]] = km(formula = ~ x.year + cos(2*pi/52*(x.week-4)) + sin(2*pi
                            nugget.estim=TRUE,
                            covtype="gauss",
                            optim.method="gen",
-                           upper = c(20,20),
+                           upper = c(30,30),
                            control=list(max.generations=100,pop.size=100,
                                         wait.generations=10,
                                         solution.tolerance=1e-5,
                                         print.level = 1))
 nug[i] = mortSingle_nug[[i]]@covariance@nugget 
-  
 mortSingle[[i]] = km(formula = ~ x.year + cos(2*pi/52*(x.week-4)) + sin(2*pi/52*(x.week-4)) + cos(4*pi/52*(x.week-4)) + sin(4*pi/52*(x.week-4)), 
                        design = mortSingle_nug[[i]]@X, 
                        response = mortSingle_nug[[i]]@y,
                        noise.var = rep(nug[i],mortSingle_nug[[i]]@n), 
                        coef.trend = mortSingle_nug[[i]]@trend.coef,  
                        coef.cov = c(mean(lengthscales[,1]),mean(lengthscales[,2])),
+                       coef.var = mortSingle_nug[[i]]@covariance@sd2, 
+                       covtype = mortSingle_nug[[i]]@covariance@name)
+
+# fix lengthscale in Year for Northern Ireland
+i = which(countryUnq=="GBR_NIR")
+mortSingle[[i]] = km(formula = ~ x.year + cos(2*pi/52*(x.week-4)) + sin(2*pi/52*(x.week-4)) + cos(4*pi/52*(x.week-4)) + sin(4*pi/52*(x.week-4)), 
+                       design = mortSingle_nug[[i]]@X, 
+                       response = mortSingle_nug[[i]]@y,
+                       noise.var = rep(nug[i],mortSingle_nug[[i]]@n), 
+                       coef.trend = mortSingle_nug[[i]]@trend.coef,  
+                       coef.cov = c(mean(lengthscales[,1]),mortSingle_nug[[i]]@covariance@range.val[2]),
                        coef.var = mortSingle_nug[[i]]@covariance@sd2, 
                        covtype = mortSingle_nug[[i]]@covariance@name)
 ```
@@ -329,7 +342,7 @@ nWk = length(weeksForecast)
   
 xPred = data.table(year = rep(yearsForecast, each = nWk),
                     week = rep(weeksForecast, nYr))
-xPred = xPred[-which(year==2020 & week %in% 23:52)]
+xPred = xPred[-which(year==2020 & week %in% 38:52)]
 
 mortPred = predict(mortSingle[[i]], newdata=data.frame(x=xPred),
                    cov.compute=TRUE, se.compute=TRUE, type="UK")
@@ -387,7 +400,7 @@ fig <- fig %>% layout(
         xaxis = list(
                 showgrid = F, 
                 showline = TRUE, 
-                range = c("2014-01-05","2020-07-01"),
+                range = c("2014-01-05","2020-09-15"),
                 rangeselector = list(
                         buttons = list(
                                 list(
@@ -437,7 +450,7 @@ P <- list()
 for (i in 1:length(countryUnq)){
 
   yearsForecast = 2020
-  weeksForecast  = 1:30
+  weeksForecast  = 1:37
   nYr = length(yearsForecast)
   nWk = length(weeksForecast)
   
@@ -493,7 +506,7 @@ for (i in 1:length(countryUnq)){
                                      showgrid = F, 
                                      showline = TRUE, 
                                      ticks = "outside",
-                                     range = c(1,33)),
+                                     range = c(1,40)),
                         yaxis = list(title = 'Log-Mortality Rate', 
                                      titlefont = axesF, 
                                      showgrid = F, 
@@ -539,18 +552,18 @@ for (i in 1:length(countryUnq)){
                             "<b>Last week reported</b><br>",
                             "Log-mort: %{y:.4f}<br>",
                             "<extra></extra>"))
-    fig <- fig %>% add_annotations(x = length(obs20$y) + 2, y = obs20$y[length(obs20$y)]+0.005,
+    fig <- fig %>% add_annotations(x = length(obs20$y) + 3, y = obs20$y[length(obs20$y)]+0.005,
                                showarrow = FALSE,
                                text = paste("Wk ",length(obs20$y)),
                                font = list(color = '#264E86',
                                            family = 'sans serif',
-                                           size = 15))
+                                           size = 13))
     fig <- fig %>% layout(xaxis = list(title = 'Weeks', 
                                      titlefont = axesF, 
                                      showgrid = F, 
                                      showline = TRUE, 
                                      ticks = "outside",
-                                     range = c(1,33)),
+                                     range = c(1,40)),
                         yaxis = list(title = 'Log-Mortality Rate', 
                                      titlefont = axesF, 
                                      showgrid = F, 
@@ -630,7 +643,14 @@ browsable(div(style = "display: flex;  justify-content: center; height: calc(50v
 ```{r, echo = FALSE}
 browsable(div(style = "display: flex;  justify-content: center; height: calc(50vh - 50px); gap: 40px",
         div(ggplotly(P[[25]]) %>% config(displayModeBar = F)),
-        div(ggplotly(P[[26]]) %>% config(displayModeBar = F))))
+        div(ggplotly(P[[26]]) %>% config(displayModeBar = F)),
+        div(ggplotly(P[[27]]) %>% config(displayModeBar = F))))
+```
+
+```{r, echo = FALSE}
+browsable(div(style = "display: flex;  justify-content: center; height: calc(50vh - 50px); gap: 40px",
+        div(ggplotly(P[[28]]) %>% config(displayModeBar = F)),
+        div(ggplotly(P[[29]]) %>% config(displayModeBar = F))))
 ```
 
 $\color{#c64329}{\textbf{Credible Bands}}$
@@ -644,7 +664,7 @@ To highlight the uncertainty quantification available with a GP model, we plot b
 P = list()
 for (i in 1:length(countryUnq)){
   yearsForecast = 2020
-  weeksForecast  = 1:30
+  weeksForecast  = 1:37
   nYr = length(yearsForecast)
   nWk = length(weeksForecast)
   
@@ -691,7 +711,7 @@ for (i in 1:length(countryUnq)){
                            mode = "lines",
                            name = "Predicted value",
                            line = list(color = "steelblue", width = 3))
-   fig <- fig %>% add_lines(x = 1:30, y = med5Yr$med[1:30],
+   fig <- fig %>% add_lines(x = 1:37, y = med5Yr$med[1:37],
                            mode = "lines",
                            showlegend = FALSE,
                            hovertemplate = paste(
@@ -701,22 +721,22 @@ for (i in 1:length(countryUnq)){
                             "<extra></extra>"),
                            line = list(color = "#B158F5", width = 2.5,
                                        dash = "dot"))
-  fig <- fig %>% add_annotations(x = 1, y = min(xPred$l95),
-                                 showarrow = TRUE,
-                                 text = "",
-                                 ax = 4.75,
-                                 ay = min(xPred$l95),
-                                 xref = "x", yref = "y",
-                                 axref = "x", ayref = "y",
-                                 arrowcolor = '#264E86',
-                                 arrowsize = .5)
-  fig <- fig %>% add_annotations(x = 3, y = min(xPred$l95)+0.025,
-                                 showarrow = FALSE,
-                                 text = "In-sample",
-                                 font = list(color = '#264E86',
-                                             family = 'sans serif',
-                                             size = 12))
-  fig <- fig %>% add_annotations(x = 9, y = min(xPred$l95),
+  # fig <- fig %>% add_annotations(x = 1, y = min(xPred$l95),
+  #                                showarrow = TRUE,
+  #                                text = "",
+  #                                ax = 4.75,
+  #                                ay = min(xPred$l95),
+  #                                xref = "x", yref = "y",
+  #                                axref = "x", ayref = "y",
+  #                                arrowcolor = '#264E86',
+  #                                arrowsize = .5)
+  # fig <- fig %>% add_annotations(x = 3, y = min(xPred$l95)+0.025,
+  #                                showarrow = FALSE,
+  #                                text = "In-sample",
+  #                                font = list(color = '#264E86',
+  #                                            family = 'sans serif',
+  #                                            size = 12))
+  fig <- fig %>% add_annotations(x = 12, y = min(xPred$l95),
                                  showarrow = TRUE,
                                  text = "",
                                  ax = 5.25,
@@ -725,12 +745,12 @@ for (i in 1:length(countryUnq)){
                                  axref = "x", ayref = "y",
                                  arrowcolor = '#264E86',
                                  arrowsize = .5)
-  fig <- fig %>% add_annotations(x = 7, y = min(xPred$l95) + 0.025,
+  fig <- fig %>% add_annotations(x = 8.5, y = min(xPred$l95) + 0.025,
                                  showarrow = FALSE,
                                  text = "Projected",
                                  font = list(color = '#264E86',
                                              family = 'sans serif',
-                                             size = 12))
+                                             size = 14))
   fig <- fig %>% add_segments(x = 5, xend = 5, 
                               y = min(c(xPred$l95,obs20$y)),
                               yend = max(c(xPred$u95,obs20$y)),
@@ -752,7 +772,7 @@ for (i in 1:length(countryUnq)){
                                      showgrid = F, 
                                      showline = TRUE, 
                                      ticks = "outside",
-                                     range = c(1,30)),
+                                     range = c(1,37)),
                         yaxis = list(title = 'Log-Mortality Rate', 
                                      titlefont = axesF, 
                                      showgrid = F, 
@@ -837,8 +857,16 @@ browsable(div(style = "display: flex;  justify-content: center; height: calc(55v
 ```{r, echo = FALSE}
 browsable(div(style = "display: flex;  justify-content: center; height: calc(55vh - 55px); gap: 40px",
         div(ggplotly(P[[25]]) %>% config(displayModeBar = F)),
-        div(ggplotly(P[[26]]) %>% config(displayModeBar = F))))
+        div(ggplotly(P[[26]]) %>% config(displayModeBar = F)),
+        div(ggplotly(P[[27]]) %>% config(displayModeBar = F))))
 ```
+
+```{r, echo = FALSE}
+browsable(div(style = "display: flex;  justify-content: center; height: calc(55vh - 55px); gap: 40px",
+        div(ggplotly(P[[28]]) %>% config(displayModeBar = F)),
+        div(ggplotly(P[[29]]) %>% config(displayModeBar = F))))
+```
+
 <p></p>&nbsp; 
 <p></p>
 
@@ -860,7 +888,7 @@ $\color{#c64329}{\textbf{Excess deaths}}$
 excess = c()
 for (i in 1:length(countryUnq)){
   yearsForecast = 2020
-  weeksForecast  = 1:30
+  weeksForecast  = 1:37
   nYr = length(yearsForecast)
   nWk = length(weeksForecast)
 
@@ -882,33 +910,6 @@ for (i in 1:length(countryUnq)){
 
   excess = rbind(excess,xPred[,.(CountryCode,week,excess)])
 }
-excess$CountryCode = as.factor(excess$CountryCode)
-levels(excess$CountryCode) =c("Austria",
-                              "Belgium",
-                              "Bulgaria",
-                              "Switzerland",
-                              "Czech Republic",
-                              "Germany",
-                              "Denmark",
-                              "Spain",
-                              "Estonia",
-                              "Finland",
-                              "France",
-                              "Scotland",
-                              "England and Wales",
-                              "Hungary",
-                              "Israel", 
-                              "Italy",
-                              "Lithuania",
-                              "Latvia",
-                              "Netherlands",
-                              "Norway",
-                              "Poland",
-                              "Portugal",
-                              "Slovakia",
-                              "Slovenia",
-                              "Sweden",
-                              "USA")
 ```
 
 ```{r, echo=FALSE}
@@ -918,6 +919,36 @@ for (i in 1:length(excessSum$Country)) {
   excessSum$lastWeek[i] <- max(excess$week[excess$CountryCode == excessSum$Country[i] ])
   
 }
+excessSum$Country = c("Austria",
+                       "Belgium",
+                       "Bulgaria",
+                       "Switzerland",
+                       "Czech Republic",
+                       "Germany",
+                       "Denmark",
+                       "Spain",
+                       "Estonia",
+                       "Finland",
+                       "France",
+                       "England and Wales",
+                       "Nothern Ireland",
+                       "Scotland",
+                       "Greece",
+                       "Croatia",
+                       "Hungary",
+                       "Israel", 
+                       "Italy",
+                       "Lithuania",
+                       "Latvia",
+                       "Netherlands",
+                       "Norway",
+                       "Poland",
+                       "Portugal",
+                       "Slovakia",
+                       "Slovenia",
+                       "Sweden",
+                       "USA")
+
 colnames(excessSum) <- c("Country","Total Excess Deaths in 2020","Last Week Reported")
 df_html <- knitr::kable(excessSum, "html")
 kableExtra::kable_styling(df_html,bootstrap_options = "striped", full_width = F)  
